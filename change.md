@@ -1,4 +1,19 @@
 # Změny - 12. 11. 2026
+- **Cíl:** Zrušena akce „Upravit Dál“
+- **Soubory:**
+  - src/extension.js: odstraněna `akceUpravitDal()`, příkaz `taskBoard.upravitDal` a nepoužitý import `bunky`
+  - src/upravy.js: odstraněny `upravDal()` a `dnesniDatum()`
+  - package.json: odstraněn příkaz `taskBoard.upravitDal` z `commands`, `webview/context` i `commandPalette`
+  - README.md: odstraněn popis akce
+
+# Změny - 12. 11. 2026
+- **Cíl:** „Pro Clauda“ jen kopíruje do schránky (neotevírá novou konverzaci)
+- **Soubory:**
+  - src/extension.js: `akceProClauda()` – jen schránka + hláška ve stavovém řádku; odstraněno volání `claude-vscode.editor.open` (otevíralo novou konverzaci, do otevřené vložit nejde)
+  - package.json: titulek „📋 Kopírovat pro Clauda (celá sekce)“
+  - README.md: popis akce
+
+# Změny - 12. 11. 2026
 - **Cíl:** Klik na značku stavu otevírá kontextové menu; znaky/emoji v položkách menu
 - **Soubory:**
   - src/tabulka.js: značka stavu i ⋯ vyvolají `contextmenu`; zpráva `stav` zrušena

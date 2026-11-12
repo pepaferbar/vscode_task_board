@@ -21,12 +21,6 @@ function nastavBunku(radky, index, sloupec, hodnota) {
     radky[index] = '| ' + c.join(' | ') + ' |';
 }
 
-/** Dnešní datum ve formátu souboru: „11. 11. 2026“. */
-function dnesniDatum() {
-    const d = new Date();
-    return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`;
-}
-
 /**
  * Změní stav: buňku Stav v tabulce a začátek řádku „**Stav:** …“ v sekci.
  * Poznámka za stavem zůstane („odloženo, čeká na…“ → „hotovo, čeká na…“).
@@ -48,12 +42,6 @@ function zmenStav(radky, ukol, novy) {
         za = '.';
     }
     radky[ukol.radekStavu] = m[1] + novy + za;
-}
-
-/** Přepíše sloupec Dál a Datum nastaví na dnešek. */
-function upravDal(radky, ukol, text) {
-    nastavBunku(radky, ukol.radekTabulky, SLOUPEC.dal, text);
-    nastavBunku(radky, ukol.radekTabulky, SLOUPEC.datum, dnesniDatum());
 }
 
 /**
@@ -109,4 +97,4 @@ function textUkolu(radky, ukol) {
         .join('\n');
 }
 
-module.exports = { zmenStav, upravDal, smazUkol, textUkolu };
+module.exports = { zmenStav, smazUkol, textUkolu };

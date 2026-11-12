@@ -1,12 +1,12 @@
 // Doplněk „Plány a úkoly“ – zobrazí tasks/prehled-planu.md jako tabulku v postranním panelu.
-// Soubor čte; zapisuje do něj jen akce spuštěné uživatelem z tabulky (stav, Dál, smazání).
+// Soubor čte; zapisuje do něj jen akce spuštěné uživatelem z tabulky (stav, smazání).
 // Čistý JavaScript, bez buildu.
 'use strict';
 const path = require('path');
 const vscode = require('vscode');
-const { ID_STAVU, bunky, normalizujStav, parsujPrehled } = require('./parser');
+const { ID_STAVU, normalizujStav, parsujPrehled } = require('./parser');
 const { TabulkaPlanu } = require('./tabulka');
-const { smazUkol, textUkolu, upravDal, zmenStav } = require('./upravy');
+const { smazUkol, textUkolu, zmenStav } = require('./upravy');
 
 const SEKCE_NASTAVENI = 'taskBoard';
 const VYCHOZI_SOUBOR = 'tasks/prehled-planu.md';
@@ -84,48 +84,17 @@ function activate(context) {
         await zapis(data.dokument, data.radky);
     }
 
-    async function akceUpravitDal(poradi) {
-        const data = await nactiUkol(poradi);
-        if (!data) {
-            return;
-        }
-        // Původní text buňky i s markdownem (`kód` apod.)
-        const puvodni = bunky(data.radky[data.ukol.radekTabulky])[4] || '';
-        const text = await vscode.window.showInputBox({
-            title: `Dál – ${data.ukol.plan}`,
-            prompt: 'Další krok (Datum se nastaví na dnešek)',
-            value: puvodni,
-        });
-        if (text === undefined || text.trim() === puvodni.trim()) {
-            return;
-        }
-        upravDal(data.radky, data.ukol, text);
-        await zapis(data.dokument, data.radky);
-    }
-
     /**
-     * Celá sekce úkolu pro Clauda: zkopíruje ji do schránky (záloha) a otevře novou konverzaci
-     * Claude Code s textem předvyplněným v poli zprávy (neodesílá se).
-     * Používá interní příkaz doplňku Claude Code – když chybí nebo selže, zůstane jen schránka.
+     * Celá sekce úkolu pro Clauda do schránky (vloží se ručně do otevřené konverzace).
+     * Doplněk Claude Code neumí vložit text do už otevřené konverzace – jen otevřít novou.
      */
     async function akceProClauda(poradi) {
         const data = await nactiUkol(poradi);
         if (!data) {
             return;
         }
-        const text = textUkolu(data.radky, data.ukol);
-        await vscode.env.clipboard.writeText(text);
-        const prikazy = await vscode.commands.getCommands(true);
-        if (prikazy.includes('claude-vscode.editor.open')) {
-            try {
-                // Parametry: id relace (žádné = nová konverzace), počáteční text zprávy
-                await vscode.commands.executeCommand('claude-vscode.editor.open', undefined, text);
-                return;
-            } catch {
-                // Pokračuje se hláškou o schránce
-            }
-        }
-        vscode.window.setStatusBarMessage(`$(check) Zkopírováno: ${data.ukol.plan}`, 3000);
+        await vscode.env.clipboard.writeText(textUkolu(data.radky, data.ukol));
+        vscode.window.setStatusBarMessage(`$(check) Zkopírováno pro Clauda: ${data.ukol.plan}`, 3000);
     }
 
     async function akceSmazat(poradi) {
@@ -187,7 +156,6 @@ function activate(context) {
         return poradi ? akce(poradi) : undefined;
     };
     context.subscriptions.push(
-        vscode.commands.registerCommand('taskBoard.upravitDal', prikazNadUkolem(akceUpravitDal)),
         vscode.commands.registerCommand('taskBoard.kopirovat', prikazNadUkolem(akceProClauda)),
         vscode.commands.registerCommand('taskBoard.smazat', prikazNadUkolem(akceSmazat)),
         vscode.commands.registerCommand('taskBoard.smazatHotove', () => akceSmazatHotove()),
