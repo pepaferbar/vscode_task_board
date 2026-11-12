@@ -48,24 +48,32 @@
         "icon": "$(open-preview)"
       },
       {
-        "command": "taskBoard.zmenitStav",
-        "title": "Změnit stav…",
-        "category": "Plány a úkoly"
-      },
-      {
         "command": "taskBoard.upravitDal",
-        "title": "Upravit „Dál“…",
+        "title": "✏️ Upravit „Dál“…",
         "category": "Plány a úkoly"
       },
       {
         "command": "taskBoard.kopirovat",
-        "title": "Kopírovat pro Clauda",
+        "title": "✨ Vložit do Clauda (celá sekce)",
+        "category": "Plány a úkoly"
+      },
+      { "command": "taskBoard.stav.napad", "title": "💡 nápad", "category": "Plány a úkoly", "enablement": "stavId != 'napad'" },
+      { "command": "taskBoard.stav.napadLadi", "title": "💡 nápad, ladí se", "category": "Plány a úkoly", "enablement": "stavId != 'napadLadi'" },
+      { "command": "taskBoard.stav.zadani", "title": "○ zadání", "category": "Plány a úkoly", "enablement": "stavId != 'zadani'" },
+      { "command": "taskBoard.stav.rozpracovano", "title": "▶ rozpracováno", "category": "Plány a úkoly", "enablement": "stavId != 'rozpracovano'" },
+      { "command": "taskBoard.stav.odlozeno", "title": "⏸ odloženo", "category": "Plány a úkoly", "enablement": "stavId != 'odlozeno'" },
+      { "command": "taskBoard.stav.hotovo", "title": "✔ hotovo", "category": "Plány a úkoly", "enablement": "stavId != 'hotovo'" },
+      {
+        "command": "taskBoard.smazat",
+        "title": "🗑️ Smazat úkol…",
         "category": "Plány a úkoly"
       },
       {
-        "command": "taskBoard.smazat",
-        "title": "Smazat úkol…",
-        "category": "Plány a úkoly"
+        "command": "taskBoard.smazatHotove",
+        "title": "Smazat všechny hotové…",
+        "category": "Plány a úkoly",
+        "icon": "$(clear-all)",
+        "enablement": "taskBoard.maHotove"
       }
     ],
     "menus": {
@@ -79,35 +87,46 @@
           "command": "taskBoard.otevritSoubor",
           "when": "view == taskBoard.tabulka",
           "group": "navigation@2"
+        },
+        {
+          "command": "taskBoard.smazatHotove",
+          "when": "view == taskBoard.tabulka",
+          "group": "navigation@3"
         }
       ],
       "webview/context": [
-        {
-          "command": "taskBoard.zmenitStav",
-          "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'",
-          "group": "1_uprava@1"
-        },
+        { "command": "taskBoard.stav.napad", "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'", "group": "1_stav@1" },
+        { "command": "taskBoard.stav.napadLadi", "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'", "group": "1_stav@2" },
+        { "command": "taskBoard.stav.zadani", "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'", "group": "1_stav@3" },
+        { "command": "taskBoard.stav.rozpracovano", "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'", "group": "1_stav@4" },
+        { "command": "taskBoard.stav.odlozeno", "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'", "group": "1_stav@5" },
+        { "command": "taskBoard.stav.hotovo", "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'", "group": "1_stav@6" },
         {
           "command": "taskBoard.upravitDal",
           "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'",
-          "group": "1_uprava@2"
+          "group": "2_uprava@1"
         },
         {
           "command": "taskBoard.kopirovat",
           "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'",
-          "group": "2_kopie@1"
+          "group": "3_kopie@1"
         },
         {
           "command": "taskBoard.smazat",
           "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'",
-          "group": "3_smazani@1"
+          "group": "4_smazani@1"
         }
       ],
       "commandPalette": [
-        { "command": "taskBoard.zmenitStav", "when": "false" },
         { "command": "taskBoard.upravitDal", "when": "false" },
         { "command": "taskBoard.kopirovat", "when": "false" },
-        { "command": "taskBoard.smazat", "when": "false" }
+        { "command": "taskBoard.smazat", "when": "false" },
+        { "command": "taskBoard.stav.napad", "when": "false" },
+        { "command": "taskBoard.stav.napadLadi", "when": "false" },
+        { "command": "taskBoard.stav.zadani", "when": "false" },
+        { "command": "taskBoard.stav.rozpracovano", "when": "false" },
+        { "command": "taskBoard.stav.odlozeno", "when": "false" },
+        { "command": "taskBoard.stav.hotovo", "when": "false" }
       ]
     },
     "configuration": {

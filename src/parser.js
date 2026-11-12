@@ -4,6 +4,16 @@
 
 const ZNAME_STAVY = ['rozpracováno', 'zadání', 'nápad, ladí se', 'nápad', 'odloženo', 'hotovo'];
 
+/** ASCII id stavů pro podmínky `when` v menu (bez diakritiky a čárek). */
+const ID_STAVU = {
+    'nápad': 'napad',
+    'nápad, ladí se': 'napadLadi',
+    'zadání': 'zadani',
+    'rozpracováno': 'rozpracovano',
+    'odloženo': 'odlozeno',
+    'hotovo': 'hotovo',
+};
+
 /*
  * Výsledek: pole úkolů v pořadí řádků tabulky „Stav v kostce“ (= pořadí přidání)
  * Ukol { poradi, plan, aplikace, stav, stavKlic, datum, dal, radek, kotva? }
@@ -237,4 +247,4 @@ function parsujPrehled(text) {
     return ukoly;
 }
 
-module.exports = { ZNAME_STAVY, odstranMarkdown, normalizujStav, parsujPrehled, kotvaNadpisu, bunky };
+module.exports = { ZNAME_STAVY, ID_STAVU, odstranMarkdown, normalizujStav, parsujPrehled, kotvaNadpisu, bunky };

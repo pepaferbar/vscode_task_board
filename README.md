@@ -15,12 +15,15 @@ Doplněk pro VS Code. Soubor `tasks/prehled-planu.md` zobrazí jako tabulku př�
 
 ## Akce nad úkolem
 
-Klik na **značku stavu** = změna stavu. Tlačítko **⋯** (ukáže se při najetí na řádek) nebo **pravý klik** = nabídka:
+Klik na **značku stavu**, tlačítko **⋯** nebo **pravý klik** na řádek = kontextové menu (položky se znaky/emoji, aktuální stav zašedlý):
 
-- **Změnit stav…** – přepíše buňku Stav v tabulce a začátek řádku `**Stav:**` v sekci (poznámka za čárkou zůstane). Datum se nemění.
+- **stavy** (nápad … hotovo) – přímo v menu, oddělené čarou, aktuální stav chybí; přepíše buňku Stav v tabulce a začátek řádku `**Stav:**` v sekci (poznámka za čárkou zůstane). Datum se nemění.
 - **Upravit „Dál“…** – přepíše sloupec Dál a Datum nastaví na dnešek.
-- **Kopírovat pro Clauda** – celá sekce úkolu do schránky.
+- **Vložit do Clauda** – celá sekce úkolu se zkopíruje do schránky a otevře se nová konverzace Claude Code s textem v poli zprávy (neodešle se). Bez doplňku Claude Code zůstane jen schránka.
+- **Smazat všechny hotové…** (tlačítko $(clear-all) v záhlaví panelu) – po potvrzení se seznamem smaže všechny úkoly ve stavu *hotovo* (řádky i sekce, přečíslování); bez hotových úkolů je tlačítko zašedlé.
 - **Smazat úkol…** – po potvrzení smaže řádek tabulky i sekci `## N. …` a přečísluje další sekce.
+
+Tlačítko **⋯** (ukáže se při najetí na řádek) otevře totéž kontextové menu jako pravý klik (aktuální stav je zašedlý).
 
 Úpravy jdou přes editor a soubor se hned uloží – vrátit je jde přes Ctrl+Z v otevřeném souboru.
 

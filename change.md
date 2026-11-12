@@ -1,4 +1,61 @@
 # Změny - 12. 11. 2026
+- **Cíl:** Klik na značku stavu otevírá kontextové menu; znaky/emoji v položkách menu
+- **Soubory:**
+  - src/tabulka.js: značka stavu i ⋯ vyvolají `contextmenu`; zpráva `stav` zrušena
+  - src/extension.js: odstraněn dialog `akceZmenitStav()` a příkaz `taskBoard.zmenitStav`; `NABIDKA_STAVU` jen názvy stavů
+  - package.json: titulky s prefixem (💡 ○ ▶ ⏸ ✔ jako v tabulce, ✏️ ✨ 🗑️) – kontextové menu codicony nevykresluje; odstraněn `taskBoard.zmenitStav`
+  - README.md: popis ovládání
+
+# Změny - 12. 11. 2026
+- **Cíl:** Tlačítko ⋯ otevírá nativní kontextové menu (zašedlý aktuální stav místo popisu „(aktuální)“)
+- **Soubory:**
+  - src/tabulka.js: klik na ⋯ vyvolá na tlačítku událost `contextmenu` (VS Code ji zachytí s kontextem `data-vscode-context` řádku); zpráva `menu` zrušena
+  - src/extension.js: odstraněna nabídka `nabidkaAkci()` (QuickPick)
+  - README.md: popis tlačítka ⋯
+
+# Změny - 12. 11. 2026
+- **Cíl:** Tlačítko „Smazat všechny hotové“ v záhlaví panelu
+- **Soubory:**
+  - src/extension.js: `akceSmazatHotove()` – potvrzení se seznamem, mazání po jednom přes `smazUkol()` s novým parsováním po každém kroku, jeden zápis souboru; příkaz `taskBoard.smazatHotove`; v `obnov()` kontext `taskBoard.maHotove`
+  - package.json: příkaz `taskBoard.smazatHotove` (ikona `clear-all`, `enablement: taskBoard.maHotove` – bez hotových zašedlé), tlačítko ve `view/title`
+  - README.md: popis tlačítka
+
+# Změny - 12. 11. 2026
+- **Cíl:** Položky menu se neskrývají, jen zakážou (aktuální stav)
+- **Soubory:**
+  - package.json: u příkazů `taskBoard.stav.*` podmínka `stavId != …` přesunuta z `when` v `webview/context` do `enablement` – aktuální stav je v kontextovém menu vidět šedě
+  - src/extension.js: `nabidkaAkci()` – v nabídce ⋯ všechny stavy, aktuální s popisem „(aktuální)“, jeho výběr nic neudělá
+
+# Změny - 12. 11. 2026
+- **Cíl:** Zrušeno kopírování názvu a řádku tabulky; „Pro Clauda“ vkládá sekci rovnou do nové konverzace Claude Code
+- **Soubory:**
+  - src/extension.js: `akceProClauda()` – text do schránky + `claude-vscode.editor.open(undefined, text)` (předvyplní pole zprávy, neodesílá); bez doplňku Claude Code jen schránka; odstraněny `akceKopirovatNazev/Radek` a jejich příkazy; v nabídce ⋯ položka „Vložit do Clauda“ místo sekce Kopírovat
+  - package.json: odstraněny příkazy `taskBoard.kopirovatNazev`, `taskBoard.kopirovatRadek` a podmenu `taskBoard.kopirovatMenu`; `taskBoard.kopirovat` („Vložit do Clauda (celá sekce)“) přímo v kontextovém menu
+  - README.md: popis akce
+
+# Změny - 12. 11. 2026
+- **Cíl:** Nabídka ⋯ bez „Změnit stav…“ – stavy přímo v seznamu jako v kontextovém menu
+- **Soubory:**
+  - src/extension.js: `nabidkaAkci()` – oddělovače (Stav / Úpravy / Kopírovat), stavy kromě aktuálního přímo v seznamu, tři varianty kopírování, Smazat
+  - README.md: popis nabídky ⋯
+
+# Změny - 12. 11. 2026
+- **Cíl:** Stavy přímo v kontextovém menu (bez podmenu), zrušena položka Otevřít sekci v editoru
+- **Soubory:**
+  - package.json: příkazy `taskBoard.stav.*` přímo ve `webview/context` (skupina `1_stav`, oddělená čarou od `2_uprava`, `3_kopie`, `4_smazani`); odstraněno podmenu `taskBoard.stavMenu` a příkaz `taskBoard.otevritSekci`
+  - src/extension.js: odstraněna `akceOtevritSekci()`, její registrace a položka v nabídce ⋯
+  - README.md: popis menu
+
+# Změny - 12. 11. 2026
+- **Cíl:** Kontextové menu řádku – podmenu Stav ▸ a Kopírovat ▸, nová položka Otevřít sekci v editoru
+- **Soubory:**
+  - package.json: `submenus` `taskBoard.stavMenu` a `taskBoard.kopirovatMenu`; příkazy `taskBoard.stav.napad/napadLadi/zadani/rozpracovano/odlozeno/hotovo` (aktuální stav skrytý přes `when: stavId != …`), `taskBoard.kopirovatNazev`, `taskBoard.kopirovatRadek`, `taskBoard.otevritSekci`; titulek `taskBoard.kopirovat` → „Pro Clauda (celá sekce)“; nové příkazy skryté z palety
+  - src/parser.js: mapa `ID_STAVU` (stav → ASCII id pro podmínky `when`), export
+  - src/tabulka.js: `stavId` v `data-vscode-context` řádku
+  - src/extension.js: `nastavStav()` (sdílí dialog i podmenu), registrace příkazů stavů smyčkou, `kopirovani()` + `akceKopirovatNazev/Radek`, `akceOtevritSekci()` (textový editor, kurzor na nadpisu sekce); položka v nabídce ⋯
+  - README.md: popis kontextového menu
+
+# Změny - 12. 11. 2026
 - **Cíl:** Přejmenování doplňku na anglický název vscode_task_board (jen názvy a ID, rozhraní zůstává česky)
 - **Soubory:**
   - package.json: `name` taskboard (ID `ferbar.taskboard`), kontejner `taskBoard`, view `taskBoard.tabulka`, příkazy a nastavení `planyUkoly.*` → `taskBoard.*`, podmínky `when`

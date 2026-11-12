@@ -1,10 +1,11 @@
 // Tabulka plánů přímo v postranním panelu (webview view).
 // Úzký panel: Plán / Stav / Datum, aplikace a „Dál“ menším písmem pod plánem.
 // Široký panel (≥ 520 px): všech 5 sloupců vedle sebe.
-// Klik na řádek = otevřít náhled, klik na značku stavu = změnit stav,
-// tlačítko ⋯ nebo pravý klik = nabídka akcí (změnit stav, upravit Dál, kopírovat, smazat).
+// Klik na řádek = otevřít náhled,
+// značka stavu, tlačítko ⋯ nebo pravý klik = nativní kontextové menu (stav, upravit Dál, vložit do Clauda, smazat).
 'use strict';
 const vscode = require('vscode');
+const { ID_STAVU } = require('./parser');
 
 /** Značka a barva (CSS proměnná motivu VS Code) podle stavu. */
 const ZNACKY_STAVU = {
@@ -41,7 +42,7 @@ function nonce() {
 }
 
 class TabulkaPlanu {
-    /** @param {(typ: string, poradi: number) => void} priAkci  typ: otevrit | stav | menu */
+    /** @param {(typ: string, poradi: number) => void} priAkci  typ: otevrit */
     constructor(priAkci) {
         this.priAkci = priAkci;
         this.view = undefined;
@@ -55,7 +56,7 @@ class TabulkaPlanu {
         this.view = view;
         view.webview.options = { enableScripts: true };
         view.webview.onDidReceiveMessage((m) => {
-            if (m && ['otevrit', 'stav', 'menu'].includes(m.typ)) {
+            if (m && m.typ === 'otevrit') {
                 this.priAkci(m.typ, Number(m.poradi));
             }
         });
@@ -91,11 +92,11 @@ class TabulkaPlanu {
                 const pod = [u.aplikace, u.dal].filter(Boolean).map(esc).join(' · ');
                 const tip = [u.plan, u.aplikace, u.stav, u.datum, u.dal].filter(Boolean).join('\n');
                 // Kontext pro pravý klik (menu webview/context v package.json)
-                const kontext = esc(JSON.stringify({ webviewSection: 'ukol', poradi: u.poradi, preventDefaultContextMenuItems: true }));
+                const kontext = esc(JSON.stringify({ webviewSection: 'ukol', poradi: u.poradi, stavId: ID_STAVU[u.stavKlic] || 'neznamy', preventDefaultContextMenuItems: true }));
                 return `<tr data-poradi="${u.poradi}" data-vscode-context="${kontext}" tabindex="0" title="${esc(tip)}">
   <td class="plan">${esc(u.plan)}${pod ? `<div class="pod uzky">${pod}</div>` : ''}</td>
   <td class="siroky">${esc(u.aplikace)}</td>
-  <td class="stav"><span class="znacka" title="Změnit stav" style="color: var(${barva})">${znacka}</span><span class="siroky">${esc(u.stav)}</span></td>
+  <td class="stav"><span class="znacka" title="Akce (změnit stav…)" style="color: var(${barva})">${znacka}</span><span class="siroky">${esc(u.stav)}</span></td>
   <td class="datum"><span class="uzky">${esc(kratkeDatum(u.datum))}</span><span class="siroky">${esc(u.datum)}</span></td>
   <td class="siroky">${esc(u.dal)}</td>
   <td class="akce"><button class="tlacitko" title="Akce">⋯</button></td>
@@ -149,8 +150,13 @@ ${radky}
   const posli = (typ, tr) => vscode.postMessage({ typ, poradi: tr.dataset.poradi });
   document.querySelectorAll('tbody tr').forEach((tr) => {
     tr.addEventListener('click', (e) => {
-      if (e.target.closest('.znacka')) { posli('stav', tr); }
-      else if (e.target.closest('.tlacitko')) { posli('menu', tr); }
+      const prvek = e.target.closest('.znacka, .tlacitko');
+      if (prvek) {
+        // Značka stavu i ⋯ = stejné nativní menu jako pravý klik (umí zašedlé položky) – vyvolá se
+        // událost contextmenu; VS Code ji zachytí a vezme kontext z data-vscode-context řádku
+        const r = prvek.getBoundingClientRect();
+        prvek.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left, clientY: r.bottom }));
+      }
       else { posli('otevrit', tr); }
     });
     tr.addEventListener('keydown', (e) => {

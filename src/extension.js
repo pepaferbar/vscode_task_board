@@ -4,22 +4,15 @@
 'use strict';
 const path = require('path');
 const vscode = require('vscode');
-const { bunky, normalizujStav, parsujPrehled } = require('./parser');
+const { ID_STAVU, bunky, normalizujStav, parsujPrehled } = require('./parser');
 const { TabulkaPlanu } = require('./tabulka');
 const { smazUkol, textUkolu, upravDal, zmenStav } = require('./upravy');
 
 const SEKCE_NASTAVENI = 'taskBoard';
 const VYCHOZI_SOUBOR = 'tasks/prehled-planu.md';
 
-/** Stavy v nabídce změny stavu (pořadí životního cyklu) s ikonou. */
-const NABIDKA_STAVU = [
-    ['nápad', 'lightbulb'],
-    ['nápad, ladí se', 'lightbulb'],
-    ['zadání', 'circle-outline'],
-    ['rozpracováno', 'play-circle'],
-    ['odloženo', 'debug-pause'],
-    ['hotovo', 'pass-filled'],
-];
+/** Stavy v kontextovém menu (pořadí životního cyklu); znak před názvem je v package.json. */
+const NABIDKA_STAVU = ['nápad', 'nápad, ladí se', 'zadání', 'rozpracováno', 'odloženo', 'hotovo'];
 
 /** @param {vscode.ExtensionContext} context */
 function activate(context) {
@@ -28,16 +21,9 @@ function activate(context) {
     let aktualniSoubor;
     let posledniUkoly = [];
 
-    // Tabulka v panelu: klik na řádek = náhled, značka stavu = změna stavu, ⋯ = nabídka akcí
-    const tabulka = new TabulkaPlanu((typ, poradi) => {
-        if (typ === 'stav') {
-            return akceZmenitStav(poradi);
-        }
-        if (typ === 'menu') {
-            return nabidkaAkci(poradi);
-        }
-        return otevritPrehled();
-    });
+    // Tabulka v panelu: klik na řádek = náhled
+    // (značka stavu, ⋯ i pravý klik otevírají nativní kontextové menu přímo ve webview)
+    const tabulka = new TabulkaPlanu(() => otevritPrehled());
     context.subscriptions.push(vscode.window.registerWebviewViewProvider('taskBoard.tabulka', tabulka));
 
     async function otevritPrehled() {
@@ -88,21 +74,13 @@ function activate(context) {
         return true;
     }
 
-    async function akceZmenitStav(poradi) {
+    /** Nastaví úkolu zvolený stav (z kontextového menu). */
+    async function nastavStav(poradi, stav) {
         const data = await nactiUkol(poradi);
-        if (!data) {
+        if (!data || stav === data.ukol.stavKlic) {
             return;
         }
-        const volby = NABIDKA_STAVU.map(([stav, ikona]) => ({
-            label: `$(${ikona}) ${stav}`,
-            description: stav === data.ukol.stavKlic ? 'aktuální' : undefined,
-            stav,
-        }));
-        const volba = await vscode.window.showQuickPick(volby, { placeHolder: `Stav úkolu „${data.ukol.plan}“` });
-        if (!volba || volba.stav === data.ukol.stavKlic) {
-            return;
-        }
-        zmenStav(data.radky, data.ukol, volba.stav);
+        zmenStav(data.radky, data.ukol, stav);
         await zapis(data.dokument, data.radky);
     }
 
@@ -125,12 +103,28 @@ function activate(context) {
         await zapis(data.dokument, data.radky);
     }
 
-    async function akceKopirovat(poradi) {
+    /**
+     * Celá sekce úkolu pro Clauda: zkopíruje ji do schránky (záloha) a otevře novou konverzaci
+     * Claude Code s textem předvyplněným v poli zprávy (neodesílá se).
+     * Používá interní příkaz doplňku Claude Code – když chybí nebo selže, zůstane jen schránka.
+     */
+    async function akceProClauda(poradi) {
         const data = await nactiUkol(poradi);
         if (!data) {
             return;
         }
-        await vscode.env.clipboard.writeText(textUkolu(data.radky, data.ukol));
+        const text = textUkolu(data.radky, data.ukol);
+        await vscode.env.clipboard.writeText(text);
+        const prikazy = await vscode.commands.getCommands(true);
+        if (prikazy.includes('claude-vscode.editor.open')) {
+            try {
+                // Parametry: id relace (žádné = nová konverzace), počáteční text zprávy
+                await vscode.commands.executeCommand('claude-vscode.editor.open', undefined, text);
+                return;
+            } catch {
+                // Pokračuje se hláškou o schránce
+            }
+        }
         vscode.window.setStatusBarMessage(`$(check) Zkopírováno: ${data.ukol.plan}`, 3000);
     }
 
@@ -153,19 +147,38 @@ function activate(context) {
         await zapis(data.dokument, smazUkol(data.radky, data.ukol));
     }
 
-    /** Nabídka všech akcí (tlačítko ⋯). */
-    async function nabidkaAkci(poradi) {
-        const ukol = posledniUkoly.find((u) => u.poradi === poradi);
-        const volby = [
-            { label: '$(symbol-enum) Změnit stav…', akce: akceZmenitStav },
-            { label: '$(edit) Upravit „Dál“…', akce: akceUpravitDal },
-            { label: '$(copy) Kopírovat pro Clauda', akce: akceKopirovat },
-            { label: '$(trash) Smazat úkol…', akce: akceSmazat },
-        ];
-        const volba = await vscode.window.showQuickPick(volby, { placeHolder: ukol ? ukol.plan : 'Akce' });
-        if (volba) {
-            await volba.akce(poradi);
+    /**
+     * Smaže všechny úkoly ve stavu „hotovo“ (řádky tabulky i sekce, přečíslování).
+     * Maže se po jednom a po každém smazání se soubor znovu rozparsuje (posouvají se čísla řádků).
+     */
+    async function akceSmazatHotove() {
+        const uri = aktualniSoubor || (await najdiSoubor());
+        if (!uri) {
+            vscode.window.showWarningMessage('Soubor s přehledem plánů nebyl nalezen.');
+            return;
         }
+        const dokument = await vscode.workspace.openTextDocument(uri);
+        let radky = dokument.getText().split(/\r?\n/);
+        const jeHotovy = (u) => u.stavKlic === 'hotovo' && u.radekTabulky !== undefined;
+        const hotove = parsujPrehled(radky.join('\n')).filter(jeHotovy);
+        if (hotove.length === 0) {
+            vscode.window.showInformationMessage('Žádné hotové úkoly ke smazání.');
+            return;
+        }
+        const seznam = hotove.map((u) => `• ${u.plan}`).join('\n');
+        const odpoved = await vscode.window.showWarningMessage(
+            `Smazat všechny hotové úkoly (${hotove.length})?`,
+            { modal: true, detail: `${seznam}\n\nSmažou se řádky v tabulce i sekce, další sekce se přečíslují. Vrátit jde přes Ctrl+Z v souboru.` },
+            'Smazat',
+        );
+        if (odpoved !== 'Smazat') {
+            return;
+        }
+        let ukol;
+        while ((ukol = parsujPrehled(radky.join('\n')).find(jeHotovy))) {
+            radky = smazUkol(radky, ukol);
+        }
+        await zapis(dokument, radky);
     }
 
     /** Příkaz z kontextového menu dostane objekt data-vscode-context, z palety číslo. */
@@ -174,10 +187,14 @@ function activate(context) {
         return poradi ? akce(poradi) : undefined;
     };
     context.subscriptions.push(
-        vscode.commands.registerCommand('taskBoard.zmenitStav', prikazNadUkolem(akceZmenitStav)),
         vscode.commands.registerCommand('taskBoard.upravitDal', prikazNadUkolem(akceUpravitDal)),
-        vscode.commands.registerCommand('taskBoard.kopirovat', prikazNadUkolem(akceKopirovat)),
+        vscode.commands.registerCommand('taskBoard.kopirovat', prikazNadUkolem(akceProClauda)),
         vscode.commands.registerCommand('taskBoard.smazat', prikazNadUkolem(akceSmazat)),
+        vscode.commands.registerCommand('taskBoard.smazatHotove', () => akceSmazatHotove()),
+        // Stavy přímo v kontextovém menu – jeden příkaz na každý stav (taskBoard.stav.napad apod.)
+        ...NABIDKA_STAVU.map((stav) =>
+            vscode.commands.registerCommand(`taskBoard.stav.${ID_STAVU[stav]}`, prikazNadUkolem((p) => nastavStav(p, stav))),
+        ),
     );
 
     // ---------- Čtení souboru ----------
@@ -221,6 +238,8 @@ function activate(context) {
             }
         }
         posledniUkoly = ukoly;
+        // Tlačítko „Smazat hotové“ je vidět vždy, bez hotových úkolů jen zakázané
+        vscode.commands.executeCommand('setContext', 'taskBoard.maHotove', ukoly.some((u) => u.stavKlic === 'hotovo'));
         tabulka.aktualizuj(ukoly, zprava);
         aktualizujOdznak(ukoly);
     }
