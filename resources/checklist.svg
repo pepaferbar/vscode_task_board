@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <!-- checklist: dva odškrtnuté řádky a jeden prázdný -->
+  <path d="M3 6l1.8 1.8L8.2 4.4"/>
+  <path d="M11 6.2h10"/>
+  <path d="M3 12l1.8 1.8L8.2 10.4"/>
+  <path d="M11 12.2h10"/>
+  <rect x="3.4" y="16.4" width="4.4" height="4.4" rx="1"/>
+  <path d="M11 18.6h10"/>
+</svg>

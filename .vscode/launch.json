@@ -1,0 +1,15 @@
+{
+  // F5 = spustí Extension Development Host s otevřeným workspace _VScode (bez buildu)
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Spustit doplněk",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "${workspaceFolder}/.."
+      ]
+    }
+  ]
+}

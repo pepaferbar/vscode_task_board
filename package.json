@@ -1,0 +1,137 @@
+{
+  "name": "taskboard",
+  "displayName": "Plány a úkoly",
+  "description": "Zobrazí tasks/prehled-planu.md jako tabulku v postranní liště s ikonami podle stavu a odznakem počtu otevřených úkolů.",
+  "version": "0.1.0",
+  "publisher": "ferbar",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:tasks/prehled-planu.md"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "taskBoard",
+          "title": "Plány a úkoly",
+          "icon": "resources/checklist.svg"
+        }
+      ]
+    },
+    "views": {
+      "taskBoard": [
+        {
+          "type": "webview",
+          "id": "taskBoard.tabulka",
+          "name": "Plány a úkoly"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "taskBoard.obnovit",
+        "title": "Obnovit",
+        "category": "Plány a úkoly",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "taskBoard.otevritSoubor",
+        "title": "Otevřít přehled plánů",
+        "category": "Plány a úkoly",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "taskBoard.zmenitStav",
+        "title": "Změnit stav…",
+        "category": "Plány a úkoly"
+      },
+      {
+        "command": "taskBoard.upravitDal",
+        "title": "Upravit „Dál“…",
+        "category": "Plány a úkoly"
+      },
+      {
+        "command": "taskBoard.kopirovat",
+        "title": "Kopírovat pro Clauda",
+        "category": "Plány a úkoly"
+      },
+      {
+        "command": "taskBoard.smazat",
+        "title": "Smazat úkol…",
+        "category": "Plány a úkoly"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "taskBoard.obnovit",
+          "when": "view == taskBoard.tabulka",
+          "group": "navigation@1"
+        },
+        {
+          "command": "taskBoard.otevritSoubor",
+          "when": "view == taskBoard.tabulka",
+          "group": "navigation@2"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "taskBoard.zmenitStav",
+          "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'",
+          "group": "1_uprava@1"
+        },
+        {
+          "command": "taskBoard.upravitDal",
+          "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'",
+          "group": "1_uprava@2"
+        },
+        {
+          "command": "taskBoard.kopirovat",
+          "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'",
+          "group": "2_kopie@1"
+        },
+        {
+          "command": "taskBoard.smazat",
+          "when": "webviewId == 'taskBoard.tabulka' && webviewSection == 'ukol'",
+          "group": "3_smazani@1"
+        }
+      ],
+      "commandPalette": [
+        { "command": "taskBoard.zmenitStav", "when": "false" },
+        { "command": "taskBoard.upravitDal", "when": "false" },
+        { "command": "taskBoard.kopirovat", "when": "false" },
+        { "command": "taskBoard.smazat", "when": "false" }
+      ]
+    },
+    "configuration": {
+      "title": "Plány a úkoly",
+      "properties": {
+        "taskBoard.soubor": {
+          "type": "string",
+          "default": "tasks/prehled-planu.md",
+          "description": "Cesta k souboru s přehledem plánů (relativně ke kořeni workspace, nebo absolutní)."
+        },
+        "taskBoard.badgeStavy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "nápad",
+            "nápad, ladí se",
+            "zadání",
+            "rozpracováno"
+          ],
+          "description": "Stavy (sloupec Stav), které se započítají do čísla na ikoně v activity baru."
+        }
+      }
+    }
+  }
+}
