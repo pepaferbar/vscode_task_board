@@ -1,3 +1,8 @@
+# Změny - 2026-11-13 (architektura)
+- **Cíl:** Aktualizace popisu architektury skillem `/architektura`.
+- **Soubory:**
+  - CLAUDE.md: vytvořen – moduly `src/*`, příkazy a nastavení, tok zápisu do `prehled-planu.md`, instalace junctionem, pasti (párování sekcí, enablement místo skrývání).
+
 # Změny - 13. 11. 2026
 - **Cíl:** „Kopírovat pro Clauda“ rovnou přepne úkol do stavu „rozpracováno“
 - **Soubory:**
