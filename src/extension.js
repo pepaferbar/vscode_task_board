@@ -87,14 +87,20 @@ function activate(context) {
     /**
      * Celá sekce úkolu pro Clauda do schránky (vloží se ručně do otevřené konverzace).
      * Doplněk Claude Code neumí vložit text do už otevřené konverzace – jen otevřít novou.
+     * Úkol se zároveň přepne do stavu „rozpracováno“ (pokud v něm už není).
      */
     async function akceProClauda(poradi) {
         const data = await nactiUkol(poradi);
         if (!data) {
             return;
         }
+        // Text kopírovat ještě před změnou stavu (zmenStav upravuje pole řádků na místě)
         await vscode.env.clipboard.writeText(textUkolu(data.radky, data.ukol));
         vscode.window.setStatusBarMessage(`$(check) Zkopírováno pro Clauda: ${data.ukol.plan}`, 3000);
+        if (data.ukol.stavKlic !== 'rozpracováno') {
+            zmenStav(data.radky, data.ukol, 'rozpracováno');
+            await zapis(data.dokument, data.radky);
+        }
     }
 
     async function akceSmazat(poradi) {

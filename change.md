@@ -1,3 +1,9 @@
+# Změny - 13. 11. 2026
+- **Cíl:** „Kopírovat pro Clauda“ rovnou přepne úkol do stavu „rozpracováno“
+- **Soubory:**
+  - src/extension.js: `akceProClauda()` po zkopírování do schránky nastaví stav „rozpracováno“ (v tabulce i v řádku **Stav:** sekce) a soubor uloží; pokud už rozpracovaný je, nic nezapisuje
+  - README.md: popis akce
+
 # Změny - 12. 11. 2026
 - **Cíl:** Zrušena akce „Upravit Dál“
 - **Soubory:**

@@ -18,7 +18,7 @@ Doplněk pro VS Code. Soubor `tasks/prehled-planu.md` zobrazí jako tabulku př�
 Klik na **značku stavu**, tlačítko **⋯** nebo **pravý klik** na řádek = kontextové menu (položky se znaky/emoji, aktuální stav zašedlý):
 
 - **stavy** (nápad … hotovo) – přímo v menu, oddělené čarou, aktuální stav chybí; přepíše buňku Stav v tabulce a začátek řádku `**Stav:**` v sekci (poznámka za čárkou zůstane). Datum se nemění.
-- **Kopírovat pro Clauda** – celá sekce úkolu do schránky (vložit ručně do otevřené konverzace; doplněk Claude Code neumí vložit text do už otevřené konverzace).
+- **Kopírovat pro Clauda** – celá sekce úkolu do schránky (vložit ručně do otevřené konverzace; doplněk Claude Code neumí vložit text do už otevřené konverzace) a úkol se rovnou přepne do stavu „rozpracováno“.
 - **Smazat všechny hotové…** (tlačítko $(clear-all) v záhlaví panelu) – po potvrzení se seznamem smaže všechny úkoly ve stavu *hotovo* (řádky i sekce, přečíslování); bez hotových úkolů je tlačítko zašedlé.
 - **Smazat úkol…** – po potvrzení smaže řádek tabulky i sekci `## N. …` a přečísluje další sekce.
 
