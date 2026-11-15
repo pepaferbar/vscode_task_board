@@ -1,18 +1,18 @@
 {
   "name": "taskboard",
-  "displayName": "Plány a úkoly",
-  "description": "Zobrazí tasks/prehled-planu.md jako tabulku v postranní liště s ikonami podle stavu a odznakem počtu otevřených úkolů.",
+  "displayName": "Úkolník",
+  "description": "Zobrazí databázi úkolů v Notionu jako tabulku v postranní liště s ikonami podle stavu a odznakem počtu otevřených úkolů.",
   "version": "0.1.0",
   "publisher": "ferbar",
   "license": "UNLICENSED",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "workspaceContains:tasks/prehled-planu.md"
+    "onStartupFinished"
   ],
   "main": "./src/extension.js",
   "contributes": {
@@ -20,7 +20,7 @@
       "activitybar": [
         {
           "id": "taskBoard",
-          "title": "Plány a úkoly",
+          "title": "Úkolník",
           "icon": "resources/checklist.svg"
         }
       ]
@@ -30,7 +30,7 @@
         {
           "type": "webview",
           "id": "taskBoard.tabulka",
-          "name": "Plány a úkoly"
+          "name": "Úkolník"
         }
       ]
     },
@@ -38,43 +38,58 @@
       {
         "command": "taskBoard.obnovit",
         "title": "Obnovit",
-        "category": "Plány a úkoly",
+        "category": "Úkolník",
         "icon": "$(refresh)"
       },
       {
         "command": "taskBoard.otevritSoubor",
-        "title": "Otevřít přehled plánů",
-        "category": "Plány a úkoly",
-        "icon": "$(open-preview)"
+        "title": "Otevřít databázi v Notionu",
+        "category": "Úkolník",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "taskBoard.nastavitToken",
+        "title": "Nastavit token Notionu…",
+        "category": "Úkolník"
+      },
+      {
+        "command": "taskBoard.importovatMd",
+        "title": "Importovat úkoly z prehled-planu.md do Notionu…",
+        "category": "Úkolník"
       },
       {
         "command": "taskBoard.pridat",
         "title": "➕ Nový úkol…",
-        "category": "Plány a úkoly",
+        "category": "Úkolník",
         "icon": "$(add)"
       },
       {
         "command": "taskBoard.kopirovat",
-        "title": "📋 Kopírovat pro Clauda (celá sekce)",
-        "category": "Plány a úkoly"
+        "title": "📋 Kopírovat pro Clauda (celý úkol)",
+        "category": "Úkolník"
       },
-      { "command": "taskBoard.stav.napad", "title": "💡 nápad", "category": "Plány a úkoly", "enablement": "stavId != 'napad'" },
-      { "command": "taskBoard.stav.napadLadi", "title": "💡 nápad, ladí se", "category": "Plány a úkoly", "enablement": "stavId != 'napadLadi'" },
-      { "command": "taskBoard.stav.zadani", "title": "○ zadání", "category": "Plány a úkoly", "enablement": "stavId != 'zadani'" },
-      { "command": "taskBoard.stav.rozpracovano", "title": "▶ rozpracováno", "category": "Plány a úkoly", "enablement": "stavId != 'rozpracovano'" },
-      { "command": "taskBoard.stav.odlozeno", "title": "⏸ odloženo", "category": "Plány a úkoly", "enablement": "stavId != 'odlozeno'" },
-      { "command": "taskBoard.stav.hotovo", "title": "✔ hotovo", "category": "Plány a úkoly", "enablement": "stavId != 'hotovo'" },
+      { "command": "taskBoard.stav.napad", "title": "💡 nápad", "category": "Úkolník", "enablement": "stavId != 'napad'" },
+      { "command": "taskBoard.stav.napadLadi", "title": "💡 nápad, ladí se", "category": "Úkolník", "enablement": "stavId != 'napadLadi'" },
+      { "command": "taskBoard.stav.zadani", "title": "○ zadání", "category": "Úkolník", "enablement": "stavId != 'zadani'" },
+      { "command": "taskBoard.stav.rozpracovano", "title": "▶ rozpracováno", "category": "Úkolník", "enablement": "stavId != 'rozpracovano'" },
+      { "command": "taskBoard.stav.odlozeno", "title": "⏸ odloženo", "category": "Úkolník", "enablement": "stavId != 'odlozeno'" },
+      { "command": "taskBoard.stav.hotovo", "title": "✔ hotovo", "category": "Úkolník", "enablement": "stavId != 'hotovo'" },
       {
         "command": "taskBoard.smazat",
         "title": "🗑️ Smazat úkol…",
-        "category": "Plány a úkoly"
+        "category": "Úkolník"
       },
       {
-        "command": "taskBoard.smazatHotove",
-        "title": "Smazat všechny hotové…",
-        "category": "Plány a úkoly",
-        "icon": "$(clear-all)",
-        "enablement": "taskBoard.maHotove"
+        "command": "taskBoard.zobrazitHotove",
+        "title": "Zobrazit hotové",
+        "category": "Úkolník",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "taskBoard.skrytHotove",
+        "title": "Skrýt hotové",
+        "category": "Úkolník",
+        "icon": "$(eye)"
       }
     ],
     "menus": {
@@ -95,8 +110,13 @@
           "group": "navigation@2"
         },
         {
-          "command": "taskBoard.smazatHotove",
-          "when": "view == taskBoard.tabulka",
+          "command": "taskBoard.zobrazitHotove",
+          "when": "view == taskBoard.tabulka && !taskBoard.zobrazitHotove",
+          "group": "navigation@3"
+        },
+        {
+          "command": "taskBoard.skrytHotove",
+          "when": "view == taskBoard.tabulka && taskBoard.zobrazitHotove",
           "group": "navigation@3"
         }
       ],
@@ -131,12 +151,18 @@
       ]
     },
     "configuration": {
-      "title": "Plány a úkoly",
+      "title": "Úkolník",
       "properties": {
-        "taskBoard.soubor": {
+        "taskBoard.databaze": {
           "type": "string",
-          "default": "tasks/prehled-planu.md",
-          "description": "Cesta k souboru s přehledem plánů (relativně ke kořeni workspace, nebo absolutní)."
+          "default": "",
+          "description": "ID databáze úkolů v Notionu, nebo celý odkaz na ni (ID se z odkazu vytáhne samo). Token integrace se ukládá zvlášť příkazem „Nastavit token Notionu“."
+        },
+        "taskBoard.intervalMinut": {
+          "type": "number",
+          "default": 5,
+          "minimum": 0,
+          "description": "Jak často (v minutách) se úkoly samy načtou z Notionu. 0 = jen ručně a při zobrazení panelu."
         },
         "taskBoard.badgeStavy": {
           "type": "array",

@@ -1,3 +1,34 @@
+# Změny - 15. 11. 2026 (přejmenování)
+- **Cíl:** Zobrazovaný název „Plány a úkoly“ → „Úkolník“ (jedno slovo – VS Code v titulku panelu psal „Plány A Úkoly“)
+- **Soubory:**
+  - package.json: `displayName`, titulek kontejneru v activity baru, název view, kategorie příkazů, titulek nastavení; ID (`ferbar.taskboard`, `taskBoard.*`) beze změny
+  - src/extension.js: komentář a hláška s názvem příkazu
+  - README.md, CLAUDE.md: název
+
+# Změny - 15. 11. 2026 (hotové a záložka)
+- **Cíl:** Odebrat „Smazat všechny hotové“, přepínač zobrazení hotových (výchozí skryté), klik na úkol otevře záložku místo dotazu na externí web
+- **Soubory:**
+  - src/extension.js: odstraněna `akceSmazatHotove` a kontext `taskBoard.maHotove`; přepínač `taskBoard.zobrazitHotove` / `taskBoard.skrytHotove` (stav v `globalState`, kontext pro ikonu), `vykresli()` filtruje hotové a hlásí počet skrytých; `otevritUkol()` načte obsah stránky, sestaví Markdown (název, údaje, obsah, odkaz do Notionu) a ukáže ho v náhledu Markdownu přes virtuální dokument `taskboard-ukol:`
+  - src/tabulka.js: `aktualizuj()` má třetí parametr – poznámka pod tabulkou („Skryté hotové: N“)
+  - package.json: místo `taskBoard.smazatHotove` příkazy `taskBoard.zobrazitHotove` ($(eye-closed)) a `taskBoard.skrytHotove` ($(eye)) na stejném místě v záhlaví
+  - README.md, CLAUDE.md: popis
+
+# Změny - 15. 11. 2026 (Notion – ID stránky)
+- **Cíl:** V nastavení `taskBoard.databaze` může být i odkaz na stránku, ve které databáze leží (dřív chyba 400 „is a page, not a database“)
+- **Soubory:**
+  - src/notion.js: `zdrojDat()` při odpovědi „is a page“ najde v potomcích stránky první `child_database` a použije ji; bez databáze srozumitelná hláška
+  - Notion (přes konektor, mimo repo): ve stránce DEV-TASK založena databáze „Úkoly“ (Název, Aplikace, Stav, Datum, Dál, Pořadí), 5 podstránek do ní přesunuto, tučné řádky Aplikace/Stav/Datum/Dál převedeny na vlastnosti a z textu odstraněny (u úkolu 3 zůstal řádek Stav s poznámkou), čísla z názvů → Pořadí
+
+# Změny - 15. 11. 2026 (Notion)
+- **Cíl:** Zdrojem úkolů je místo `tasks/prehled-planu.md` databáze v Notionu (čtení i zápis), jednorázový import z MD
+- **Soubory:**
+  - src/notion.js: nový – klient REST API Notionu (verze 2025-09-03, `fetch`, bez npm): data source + schéma, dotaz se stránkováním a řazením podle Pořadí, nová stránka s bloky, změna stavu, koš, obsah stránky → Markdown; rozestup požadavků, opakování při 429, české chybové hlášky; převod stavu „nápad, ladí se“ ↔ „nápad (ladí se)“
+  - src/extension.js: přepsán na Notion – token v SecretStorage (příkaz „Nastavit token Notionu…“), ID databáze z nastavení, akce podle ID stránky, obnovení při zobrazení panelu a v intervalu, při chybě zůstanou poslední data; import z `prehled-planu.md`; odstraněno čtení souboru a watchery
+  - src/tabulka.js: řádky nesou ID stránky místo pořadí, klik otevře stránku v Notionu, obnovení při zobrazení panelu
+  - src/upravy.js: smazán (úpravy textu MD už nejsou potřeba)
+  - package.json: aktivace `onStartupFinished`, engine `^1.82.0`, příkazy `taskBoard.nastavitToken` a `taskBoard.importovatMd`, „Otevřít databázi v Notionu“, nastavení `taskBoard.databaze` a `taskBoard.intervalMinut` místo `taskBoard.soubor`
+  - README.md, CLAUDE.md: založení databáze, nové chování
+
 # Změny - 15. 11. 2026
 - **Cíl:** Přidání nového úkolu přímo z panelu
 - **Soubory:**

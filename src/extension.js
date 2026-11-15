@@ -1,175 +1,234 @@
-// Doplněk „Plány a úkoly“ – zobrazí tasks/prehled-planu.md jako tabulku v postranním panelu.
-// Soubor čte; zapisuje do něj jen akce spuštěné uživatelem z tabulky (nový úkol, stav, smazání).
-// Čistý JavaScript, bez buildu.
+// Doplněk „Úkolník“ – zobrazí databázi úkolů v Notionu jako tabulku v postranním panelu.
+// Čte přes REST API Notionu; zapisuje jen akce spuštěné uživatelem (nový úkol, stav, smazání).
+// Čistý JavaScript, bez buildu a bez npm.
 'use strict';
-const path = require('path');
 const vscode = require('vscode');
 const { ID_STAVU, normalizujStav, parsujPrehled } = require('./parser');
 const { TabulkaPlanu } = require('./tabulka');
-const { dnesniDatum, pridejUkol, smazUkol, textUkolu, zmenStav } = require('./upravy');
+const { NotionKlient, idZOdkazu, datumIso, dnesIso, odstranMarkdown } = require('./notion');
 
 const SEKCE_NASTAVENI = 'taskBoard';
-const VYCHOZI_SOUBOR = 'tasks/prehled-planu.md';
+const KLIC_TOKENU = 'taskBoard.notionToken';
+const KLIC_HOTOVE = 'taskBoard.zobrazitHotove'; // globalState: zobrazovat hotové úkoly (výchozí ne)
+const SCHEMA_ZALOZKY = 'taskboard-ukol'; // virtuální dokumenty pro náhled úkolu v záložce
 
 /** Stavy v kontextovém menu (pořadí životního cyklu); znak před názvem je v package.json. */
 const NABIDKA_STAVU = ['nápad', 'nápad, ladí se', 'zadání', 'rozpracováno', 'odloženo', 'hotovo'];
 
 /** @param {vscode.ExtensionContext} context */
 function activate(context) {
-    let watchery = [];
-    let casovac;
-    let aktualniSoubor;
     let posledniUkoly = [];
+    let posledniZprava;
+    let klient;
+    let interval;
+    let probiha; // běžící obnovení (další volání na něj počká)
+    let znovu = false;
 
-    // Tabulka v panelu: klik na řádek = náhled
-    // (značka stavu, ⋯ i pravý klik otevírají nativní kontextové menu přímo ve webview)
-    const tabulka = new TabulkaPlanu(() => otevritPrehled());
+    // Tabulka v panelu: klik na řádek = zobrazit úkol v záložce, zobrazení panelu = obnovit
+    const tabulka = new TabulkaPlanu({
+        priOtevreni: (id) => otevritUkol(id),
+        priZobrazeni: () => obnov(),
+    });
     context.subscriptions.push(vscode.window.registerWebviewViewProvider('taskBoard.tabulka', tabulka));
 
-    async function otevritPrehled() {
-        const uri = aktualniSoubor || (await najdiSoubor());
-        if (uri) {
-            await otevritNahled(uri);
-        } else {
-            vscode.window.showWarningMessage('Soubor s přehledem plánů nebyl nalezen.');
-        }
-    }
+    const nastaveni = () => vscode.workspace.getConfiguration(SEKCE_NASTAVENI);
 
-    // ---------- Akce nad úkolem (zápis do souboru) ----------
-
-    /**
-     * Načte aktuální text souboru (včetně neuložených změn v editoru) a najde úkol podle pořadí.
-     * Ověří, že jde o stejný úkol, jaký je vidět v tabulce (soubor se mezitím mohl změnit).
-     */
-    async function nactiUkol(poradi) {
-        const uri = aktualniSoubor || (await najdiSoubor());
-        if (!uri) {
-            vscode.window.showWarningMessage('Soubor s přehledem plánů nebyl nalezen.');
+    /** Klient Notionu z tokenu (SecretStorage) a ID databáze (nastavení); bez nich undefined. */
+    async function ziskejKlienta() {
+        const token = await context.secrets.get(KLIC_TOKENU);
+        const databaze = idZOdkazu(nastaveni().get('databaze'));
+        if (!token || !databaze) {
+            klient = undefined;
             return undefined;
         }
-        const dokument = await vscode.workspace.openTextDocument(uri);
-        const text = dokument.getText();
-        const ukol = parsujPrehled(text).find((u) => u.poradi === poradi);
-        const zobrazeny = posledniUkoly.find((u) => u.poradi === poradi);
-        if (!ukol || ukol.radekTabulky === undefined || (zobrazeny && zobrazeny.plan !== ukol.plan)) {
-            vscode.window.showWarningMessage('Úkol v souboru nesouhlasí s tabulkou – obnovte ji a zkuste to znovu.');
-            obnov();
-            return undefined;
+        if (!klient || klient.token !== token || klient.databaze !== databaze) {
+            klient = new NotionKlient(token, databaze);
         }
-        return { dokument, radky: text.split(/\r?\n/), ukol };
+        return klient;
     }
 
-    /** Nahradí celý obsah dokumentu (jde vrátit přes Ctrl+Z) a uloží ho. */
-    async function zapis(dokument, radky) {
-        const eol = dokument.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
-        const edit = new vscode.WorkspaceEdit();
-        const cely = new vscode.Range(dokument.positionAt(0), dokument.positionAt(dokument.getText().length));
-        edit.replace(dokument.uri, cely, radky.join(eol));
-        if (!(await vscode.workspace.applyEdit(edit))) {
-            vscode.window.showErrorMessage('Úpravu souboru se nepodařilo provést.');
-            return false;
+    /** Klient pro akci; když chybí nastavení, nabídne ho. */
+    async function klientProAkci() {
+        const k = await ziskejKlienta();
+        if (!k) {
+            const volba = await vscode.window.showWarningMessage(
+                'Doplněk nemá nastavený token Notionu nebo ID databáze.',
+                'Nastavit token',
+                'Nastavit databázi',
+            );
+            if (volba === 'Nastavit token') {
+                await akceNastavitToken();
+            } else if (volba === 'Nastavit databázi') {
+                await vscode.commands.executeCommand('workbench.action.openSettings', `${SEKCE_NASTAVENI}.databaze`);
+            }
         }
-        await dokument.save();
-        await obnov();
-        return true;
+        return k;
     }
 
-    /** Nastaví úkolu zvolený stav (z kontextového menu). */
-    async function nastavStav(poradi, stav) {
-        const data = await nactiUkol(poradi);
-        if (!data || stav === data.ukol.stavKlic) {
+    /** Chyba akce do notifikace a obnovení tabulky (stav v Notionu se mohl změnit). */
+    function chyba(e) {
+        vscode.window.showErrorMessage(e && e.message ? e.message : String(e));
+        obnov();
+    }
+
+    const najdiUkol = (id) => posledniUkoly.find((u) => u.id === id);
+
+    // ---------- Zobrazení úkolu v záložce (náhled Markdownu virtuálního dokumentu) ----------
+
+    // Notion nejde vložit do rámu (zakazuje to), proto se obsah stránky převede na Markdown
+    // a ukáže ve vestavěném náhledu – bez dotazu „otevřít externí web?“
+    const obsahyZalozek = new Map(); // uri → text
+    const zmenaZalozky = new vscode.EventEmitter();
+    context.subscriptions.push(
+        zmenaZalozky,
+        vscode.workspace.registerTextDocumentContentProvider(SCHEMA_ZALOZKY, {
+            onDidChange: zmenaZalozky.event,
+            provideTextDocumentContent: (uri) => obsahyZalozek.get(uri.toString()) || 'Načítám…',
+        }),
+    );
+
+    async function otevritUkol(id) {
+        const ukol = najdiUkol(id);
+        const k = await klientProAkci();
+        if (!ukol || !k) {
             return;
         }
-        zmenStav(data.radky, data.ukol, stav);
-        await zapis(data.dokument, data.radky);
+        // Název záložky = název úkolu (bez znaků, které nepatří do cesty)
+        const nazev = ukol.plan.replace(/[\\/?#%*:|"<>]+/g, '-').trim() || 'úkol';
+        const uri = vscode.Uri.from({ scheme: SCHEMA_ZALOZKY, path: `/${nazev}.md`, query: id.replace(/-/g, '') });
+        try {
+            const obsah = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Window, title: `Načítám ${ukol.plan}…` },
+                () => k.obsahStranky(id),
+            );
+            const udaje = [
+                ukol.aplikace && `**Aplikace:** ${ukol.aplikace}`,
+                `**Stav:** ${ukol.stav || 'neuveden'}`,
+                ukol.datum && `**Datum:** ${ukol.datum}`,
+                ukol.dal && `**Dál:** ${ukol.dal}`,
+            ].filter(Boolean);
+            const text = [
+                `# ${ukol.plan}`,
+                '',
+                udaje.join('  \n'),
+                '',
+                '---',
+                '',
+                obsah || '*Stránka nemá žádný obsah.*',
+                '',
+                '---',
+                '',
+                ukol.url ? `[Otevřít v Notionu](${ukol.url})` : '',
+            ].join('\n');
+            obsahyZalozek.set(uri.toString(), text);
+            zmenaZalozky.fire(uri);
+            try {
+                await vscode.commands.executeCommand('markdown.showPreview', uri);
+            } catch {
+                // Záloha, kdyby vestavěné rozšíření Markdown nebylo k dispozici
+                await vscode.window.showTextDocument(uri, { preview: true });
+            }
+        } catch (e) {
+            chyba(e);
+        }
+    }
+
+    // ---------- Přepínač zobrazení hotových ----------
+
+    const zobrazitHotove = () => context.globalState.get(KLIC_HOTOVE, false);
+
+    async function nastavHotove(zobrazit) {
+        await context.globalState.update(KLIC_HOTOVE, zobrazit);
+        vscode.commands.executeCommand('setContext', 'taskBoard.zobrazitHotove', zobrazit);
+        vykresli();
+    }
+
+    // ---------- Akce nad úkolem (zápis do Notionu) ----------
+
+    /** Nastaví úkolu zvolený stav (z kontextového menu). */
+    async function nastavStav(id, stav) {
+        const ukol = najdiUkol(id);
+        const k = await klientProAkci();
+        if (!ukol || !k || stav === ukol.stavKlic) {
+            return;
+        }
+        try {
+            await k.zmenStav(id, stav);
+            await obnov();
+        } catch (e) {
+            chyba(e);
+        }
     }
 
     /**
-     * Celá sekce úkolu pro Clauda do schránky (vloží se ručně do otevřené konverzace).
+     * Celý úkol pro Clauda do schránky (vloží se ručně do otevřené konverzace).
      * Doplněk Claude Code neumí vložit text do už otevřené konverzace – jen otevřít novou.
      * Úkol se zároveň přepne do stavu „rozpracováno“ (pokud v něm už není).
      */
-    async function akceProClauda(poradi) {
-        const data = await nactiUkol(poradi);
-        if (!data) {
+    async function akceProClauda(id) {
+        const ukol = najdiUkol(id);
+        const k = await klientProAkci();
+        if (!ukol || !k) {
             return;
         }
-        // Text kopírovat ještě před změnou stavu (zmenStav upravuje pole řádků na místě)
-        await vscode.env.clipboard.writeText(textUkolu(data.radky, data.ukol));
-        vscode.window.setStatusBarMessage(`$(check) Zkopírováno pro Clauda: ${data.ukol.plan}`, 3000);
-        if (data.ukol.stavKlic !== 'rozpracováno') {
-            zmenStav(data.radky, data.ukol, 'rozpracováno');
-            await zapis(data.dokument, data.radky);
+        try {
+            const obsah = await k.obsahStranky(id);
+            const text = [
+                `## ${ukol.plan}`,
+                ukol.aplikace && `- Aplikace: ${ukol.aplikace}`,
+                `- Stav: ${ukol.stav || 'neuveden'}`,
+                ukol.datum && `- Datum: ${ukol.datum}`,
+                ukol.dal && `- Dál: ${ukol.dal}`,
+                obsah && `\n${obsah}`,
+            ]
+                .filter(Boolean)
+                .join('\n');
+            await vscode.env.clipboard.writeText(text);
+            vscode.window.setStatusBarMessage(`$(check) Zkopírováno pro Clauda: ${ukol.plan}`, 3000);
+            if (ukol.stavKlic !== 'rozpracováno') {
+                await k.zmenStav(id, 'rozpracováno');
+                await obnov();
+            }
+        } catch (e) {
+            chyba(e);
         }
     }
 
-    async function akceSmazat(poradi) {
-        const data = await nactiUkol(poradi);
-        if (!data) {
+    async function akceSmazat(id) {
+        const ukol = najdiUkol(id);
+        const k = await klientProAkci();
+        if (!ukol || !k) {
             return;
         }
-        const co = data.ukol.cisloSekce !== undefined
-            ? `řádek v tabulce i sekci „## ${data.ukol.cisloSekce}. …“ (další sekce se přečíslují)`
-            : 'řádek v tabulce';
         const odpoved = await vscode.window.showWarningMessage(
-            `Smazat úkol „${data.ukol.plan}“?`,
-            { modal: true, detail: `Smaže se ${co}. Vrátit jde přes Ctrl+Z v souboru.` },
+            `Smazat úkol „${ukol.plan}“?`,
+            { modal: true, detail: 'Stránka se přesune do koše v Notionu, odkud jde obnovit.' },
             'Smazat',
         );
         if (odpoved !== 'Smazat') {
             return;
         }
-        await zapis(data.dokument, smazUkol(data.radky, data.ukol));
-    }
-
-    /**
-     * Smaže všechny úkoly ve stavu „hotovo“ (řádky tabulky i sekce, přečíslování).
-     * Maže se po jednom a po každém smazání se soubor znovu rozparsuje (posouvají se čísla řádků).
-     */
-    async function akceSmazatHotove() {
-        const uri = aktualniSoubor || (await najdiSoubor());
-        if (!uri) {
-            vscode.window.showWarningMessage('Soubor s přehledem plánů nebyl nalezen.');
-            return;
+        try {
+            await k.smazUkol(id);
+            await obnov();
+        } catch (e) {
+            chyba(e);
         }
-        const dokument = await vscode.workspace.openTextDocument(uri);
-        let radky = dokument.getText().split(/\r?\n/);
-        const jeHotovy = (u) => u.stavKlic === 'hotovo' && u.radekTabulky !== undefined;
-        const hotove = parsujPrehled(radky.join('\n')).filter(jeHotovy);
-        if (hotove.length === 0) {
-            vscode.window.showInformationMessage('Žádné hotové úkoly ke smazání.');
-            return;
-        }
-        const seznam = hotove.map((u) => `• ${u.plan}`).join('\n');
-        const odpoved = await vscode.window.showWarningMessage(
-            `Smazat všechny hotové úkoly (${hotove.length})?`,
-            { modal: true, detail: `${seznam}\n\nSmažou se řádky v tabulce i sekce, další sekce se přečíslují. Vrátit jde přes Ctrl+Z v souboru.` },
-            'Smazat',
-        );
-        if (odpoved !== 'Smazat') {
-            return;
-        }
-        let ukol;
-        while ((ukol = parsujPrehled(radky.join('\n')).find(jeHotovy))) {
-            radky = smazUkol(radky, ukol);
-        }
-        await zapis(dokument, radky);
     }
 
     /**
      * Nový úkol: postupně se zeptá na název, aplikaci, stav, „Dál“ a popis.
-     * Přidá řádek na konec tabulky a sekci „## N. …“ na konec souboru. Esc kdykoli = zrušit.
+     * Založí stránku v databázi (Pořadí = nejvyšší + 1, Datum = dnes). Esc kdykoli = zrušit.
      */
     async function akcePridat() {
-        const uri = aktualniSoubor || (await najdiSoubor());
-        if (!uri) {
-            vscode.window.showWarningMessage('Soubor s přehledem plánů nebyl nalezen.');
+        const k = await klientProAkci();
+        if (!k) {
             return;
         }
         const titul = (krok) => `Nový úkol (${krok}/5)`;
         const plan = await vscode.window.showInputBox({
             title: titul(1),
-            prompt: 'Název úkolu (sloupec Plán a nadpis sekce)',
+            prompt: 'Název úkolu',
             ignoreFocusOut: true,
             validateInput: (v) => (v.trim() ? undefined : 'Název je povinný.'),
         });
@@ -203,97 +262,187 @@ function activate(context) {
         }
         const popis = await vscode.window.showInputBox({
             title: titul(5),
-            prompt: 'Popis do sekce (nepovinné; víc odrážek oddělte „;;“)',
+            prompt: 'Popis do stránky (nepovinné; víc odrážek oddělte „;;“)',
             ignoreFocusOut: true,
         });
         if (popis === undefined) {
             return;
         }
-
-        // Samotný název aplikace (jedno slovo) jako kód – jako ostatní řádky tabulky
-        let app = aplikace.trim();
-        if (/^[\w.-]+$/.test(app)) {
-            app = `\`${app}\``;
-        }
-        const dokument = await vscode.workspace.openTextDocument(uri);
-        const radky = pridejUkol(dokument.getText().split(/\r?\n/), {
-            plan: plan.trim(),
-            aplikace: app,
-            stav,
-            datum: dnesniDatum(),
-            dal: dal.trim(),
-            popis: popis.split(';;').map((p) => p.trim()).filter(Boolean),
-        });
-        if (!radky) {
-            vscode.window.showErrorMessage('V souboru chybí tabulka „## Stav v kostce“ – úkol nejde přidat.');
-            return;
-        }
-        if (await zapis(dokument, radky)) {
+        const cislo = Math.max(0, ...posledniUkoly.map((u) => u.cislo || 0)) + 1;
+        try {
+            await k.vytvorUkol(
+                { plan: plan.trim(), aplikace: aplikace.trim(), stav, datum: dnesIso(), dal: dal.trim(), poradi: cislo },
+                popis.split(';;').map((p) => p.trim()).filter(Boolean).map((p) => `- ${p}`),
+            );
             vscode.window.setStatusBarMessage(`$(check) Přidán úkol: ${plan.trim()}`, 3000);
+            await obnov();
+        } catch (e) {
+            chyba(e);
         }
     }
 
-    /** Příkaz z kontextového menu dostane objekt data-vscode-context, z palety číslo. */
+    // ---------- Nastavení a import ----------
+
+    async function akceNastavitToken() {
+        const token = await vscode.window.showInputBox({
+            title: 'Token integrace Notionu',
+            prompt: 'Internal integration secret (notion.so/profile/integrations). Prázdné = smazat uložený token.',
+            password: true,
+            ignoreFocusOut: true,
+        });
+        if (token === undefined) {
+            return;
+        }
+        if (token.trim()) {
+            await context.secrets.store(KLIC_TOKENU, token.trim());
+            vscode.window.setStatusBarMessage('$(check) Token Notionu uložen', 3000);
+        } else {
+            await context.secrets.delete(KLIC_TOKENU);
+            vscode.window.setStatusBarMessage('$(check) Token Notionu smazán', 3000);
+        }
+        // obnov() zavolá onDidChange u secrets
+    }
+
+    /**
+     * Jednorázový import z původního prehled-planu.md: každý řádek tabulky „Stav v kostce“
+     * = nová stránka, text sekce „## N. …“ = obsah stránky.
+     */
+    async function akceImportovatMd() {
+        const k = await klientProAkci();
+        if (!k) {
+            return;
+        }
+        const slozka = (vscode.workspace.workspaceFolders || [])[0];
+        const vyber = await vscode.window.showOpenDialog({
+            title: 'Soubor s přehledem plánů k importu do Notionu',
+            defaultUri: slozka ? vscode.Uri.joinPath(slozka.uri, 'tasks', 'prehled-planu.md') : undefined,
+            filters: { Markdown: ['md'] },
+            canSelectMany: false,
+        });
+        if (!vyber || !vyber[0]) {
+            return;
+        }
+        const text = Buffer.from(await vscode.workspace.fs.readFile(vyber[0])).toString('utf8');
+        const radky = text.split(/\r?\n/);
+        const ukoly = parsujPrehled(text);
+        if (ukoly.length === 0) {
+            vscode.window.showWarningMessage('V souboru nejsou žádné úkoly.');
+            return;
+        }
+        const varovani = posledniUkoly.length
+            ? `\n\nPozor: v databázi už je ${posledniUkoly.length} úkolů – import je přidá za ně (duplicity se nekontrolují).`
+            : '';
+        const odpoved = await vscode.window.showWarningMessage(
+            `Importovat ${ukoly.length} úkolů do Notionu?`,
+            { modal: true, detail: ukoly.map((u) => `• ${u.plan}`).join('\n') + varovani },
+            'Importovat',
+        );
+        if (odpoved !== 'Importovat') {
+            return;
+        }
+        const zacatek = Math.max(0, ...posledniUkoly.map((u) => u.cislo || 0));
+        let hotovo = 0;
+        try {
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: 'Import do Notionu', cancellable: true },
+                async (prubeh, zruseni) => {
+                    for (const u of ukoly) {
+                        if (zruseni.isCancellationRequested) {
+                            break;
+                        }
+                        prubeh.report({ message: `${hotovo + 1}/${ukoly.length}: ${u.plan}`, increment: 100 / ukoly.length });
+                        await k.vytvorUkol(
+                            {
+                                plan: u.plan,
+                                aplikace: u.aplikace,
+                                stav: u.stavKlic === 'neznámý' ? u.stav : u.stavKlic,
+                                datum: datumIso(u.datum) || u.datum,
+                                dal: u.dal,
+                                poradi: zacatek + hotovo + 1,
+                            },
+                            textSekce(radky, u),
+                        );
+                        hotovo++;
+                    }
+                },
+            );
+            vscode.window.showInformationMessage(`Importováno ${hotovo} z ${ukoly.length} úkolů.`);
+        } catch (e) {
+            vscode.window.showErrorMessage(`Import se zastavil po ${hotovo} úkolech: ${e && e.message ? e.message : e}`);
+        }
+        await obnov();
+    }
+
+    /** Příkaz z kontextového menu dostane objekt data-vscode-context, z kódu přímo ID stránky. */
     const prikazNadUkolem = (akce) => (arg) => {
-        const poradi = typeof arg === 'number' ? arg : Number(arg && arg.poradi);
-        return poradi ? akce(poradi) : undefined;
+        const id = typeof arg === 'string' ? arg : arg && arg.id;
+        return id ? akce(id) : undefined;
     };
     context.subscriptions.push(
         vscode.commands.registerCommand('taskBoard.kopirovat', prikazNadUkolem(akceProClauda)),
         vscode.commands.registerCommand('taskBoard.smazat', prikazNadUkolem(akceSmazat)),
-        vscode.commands.registerCommand('taskBoard.smazatHotove', () => akceSmazatHotove()),
+        vscode.commands.registerCommand('taskBoard.zobrazitHotove', () => nastavHotove(true)),
+        vscode.commands.registerCommand('taskBoard.skrytHotove', () => nastavHotove(false)),
         vscode.commands.registerCommand('taskBoard.pridat', () => akcePridat()),
+        vscode.commands.registerCommand('taskBoard.nastavitToken', () => akceNastavitToken()),
+        vscode.commands.registerCommand('taskBoard.importovatMd', () => akceImportovatMd()),
         // Stavy přímo v kontextovém menu – jeden příkaz na každý stav (taskBoard.stav.napad apod.)
         ...NABIDKA_STAVU.map((stav) =>
-            vscode.commands.registerCommand(`taskBoard.stav.${ID_STAVU[stav]}`, prikazNadUkolem((p) => nastavStav(p, stav))),
+            vscode.commands.registerCommand(`taskBoard.stav.${ID_STAVU[stav]}`, prikazNadUkolem((id) => nastavStav(id, stav))),
         ),
     );
 
-    // ---------- Čtení souboru ----------
+    // ---------- Čtení z Notionu ----------
 
-    const nastaveni = () => vscode.workspace.getConfiguration(SEKCE_NASTAVENI);
-    const cestaSouboru = () => (nastaveni().get('soubor') || VYCHOZI_SOUBOR).trim();
-
-    /** Najde soubor s přehledem (absolutní cesta, nebo první složka workspace, kde existuje). */
-    async function najdiSoubor() {
-        const cesta = cestaSouboru();
-        if (path.isAbsolute(cesta)) {
-            const uri = vscode.Uri.file(cesta);
-            return (await existuje(uri)) ? uri : undefined;
+    /** Načte úkoly z Notionu a překreslí tabulku i odznak. Souběžná volání se sloučí. */
+    async function obnov() {
+        if (probiha) {
+            znovu = true;
+            return probiha;
         }
-        const casti = cesta.split(/[\\/]+/).filter(Boolean);
-        for (const slozka of vscode.workspace.workspaceFolders || []) {
-            const uri = vscode.Uri.joinPath(slozka.uri, ...casti);
-            if (await existuje(uri)) {
-                return uri;
-            }
+        probiha = (async () => {
+            do {
+                znovu = false;
+                await nactiAVykresli();
+            } while (znovu);
+        })();
+        try {
+            await probiha;
+        } finally {
+            probiha = undefined;
         }
-        return undefined;
     }
 
-    /** Načte soubor, rozparsuje ho a překreslí tabulku i odznak. */
-    async function obnov() {
+    async function nactiAVykresli() {
         let ukoly = [];
         let zprava;
-        aktualniSoubor = await najdiSoubor();
-        if (!aktualniSoubor) {
-            zprava = `Soubor „${cestaSouboru()}“ nebyl ve workspace nalezen.`;
+        const k = await ziskejKlienta();
+        if (!k) {
+            zprava = 'Nastavte token integrace (příkaz „Úkolník: Nastavit token Notionu“) a ID databáze (nastavení taskBoard.databaze).';
         } else {
             try {
-                const data = await vscode.workspace.fs.readFile(aktualniSoubor);
-                ukoly = parsujPrehled(Buffer.from(data).toString('utf8'));
+                ukoly = await k.nactiUkoly();
                 if (ukoly.length === 0) {
-                    zprava = 'V souboru nejsou žádné úkoly.';
+                    zprava = 'V databázi nejsou žádné úkoly.';
                 }
             } catch (e) {
-                zprava = `Soubor nelze načíst: ${e && e.message ? e.message : String(e)}`;
+                // Při chybě nechat poslední známá data, jen připsat hlášku
+                ukoly = posledniUkoly;
+                zprava = e && e.message ? e.message : String(e);
             }
         }
         posledniUkoly = ukoly;
-        // Tlačítko „Smazat hotové“ je vidět vždy, bez hotových úkolů jen zakázané
-        vscode.commands.executeCommand('setContext', 'taskBoard.maHotove', ukoly.some((u) => u.stavKlic === 'hotovo'));
-        tabulka.aktualizuj(ukoly, zprava);
+        posledniZprava = zprava;
+        vykresli();
         aktualizujOdznak(ukoly);
+    }
+
+    /** Překreslí tabulku z posledních dat; hotové úkoly jen při zapnutém přepínači. */
+    function vykresli() {
+        const zobrazit = zobrazitHotove();
+        const viditelne = zobrazit ? posledniUkoly : posledniUkoly.filter((u) => u.stavKlic !== 'hotovo');
+        const skryto = posledniUkoly.length - viditelne.length;
+        tabulka.aktualizuj(viditelne, posledniZprava, skryto > 0 ? `Skryté hotové: ${skryto}` : undefined);
     }
 
     /** Odznak na ikoně v activity baru = počet úkolů ve stavech z nastavení. */
@@ -304,71 +453,55 @@ function activate(context) {
         tabulka.nastavOdznak(pocet > 0 ? { value: pocet, tooltip: textOdznaku(pocet) } : undefined);
     }
 
-    /** Obnovení s malým zpožděním (při uložení chodí víc událostí za sebou). */
-    function naplanujObnoveni() {
-        if (casovac) {
-            clearTimeout(casovac);
+    /** Pravidelné obnovení (změny z Notionu, např. z mobilu); 0 = vypnuto. */
+    function nastavInterval() {
+        if (interval) {
+            clearInterval(interval);
+            interval = undefined;
         }
-        casovac = setTimeout(() => {
-            casovac = undefined;
-            obnov();
-        }, 200);
-    }
-
-    /** Sleduje soubor na disku (uložení, git pull, smazání). */
-    function nastavWatchery() {
-        watchery.forEach((w) => w.dispose());
-        watchery = [];
-        const cesta = cestaSouboru();
-        const vzory = [];
-        if (path.isAbsolute(cesta)) {
-            vzory.push(new vscode.RelativePattern(vscode.Uri.file(path.dirname(cesta)), path.basename(cesta)));
-        } else {
-            const relativni = cesta.replace(/\\/g, '/').replace(/^\.?\//, '');
-            for (const slozka of vscode.workspace.workspaceFolders || []) {
-                vzory.push(new vscode.RelativePattern(slozka, relativni));
-            }
-        }
-        for (const vzor of vzory) {
-            const w = vscode.workspace.createFileSystemWatcher(vzor);
-            w.onDidChange(naplanujObnoveni);
-            w.onDidCreate(naplanujObnoveni);
-            w.onDidDelete(naplanujObnoveni);
-            watchery.push(w);
+        const minut = Number(nastaveni().get('intervalMinut'));
+        if (minut > 0) {
+            interval = setInterval(() => obnov(), minut * 60 * 1000);
         }
     }
 
     context.subscriptions.push(
-        { dispose: () => watchery.forEach((w) => w.dispose()) },
-        { dispose: () => casovac && clearTimeout(casovac) },
+        { dispose: () => interval && clearInterval(interval) },
 
         vscode.commands.registerCommand('taskBoard.obnovit', () => obnov()),
 
         vscode.commands.registerCommand('taskBoard.otevritSoubor', async () => {
-            const uri = aktualniSoubor || (await najdiSoubor());
-            if (uri) {
-                await otevritNahled(uri);
-            } else {
-                vscode.window.showWarningMessage('Soubor s přehledem plánů nebyl nalezen.');
+            const k = await klientProAkci();
+            if (!k) {
+                return;
+            }
+            try {
+                const zdroj = await k.zdrojDat();
+                await vscode.env.openExternal(vscode.Uri.parse(zdroj.url));
+            } catch (e) {
+                chyba(e);
+            }
+        }),
+
+        context.secrets.onDidChange((e) => {
+            if (e.key === KLIC_TOKENU) {
+                obnov();
             }
         }),
 
         vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration(`${SEKCE_NASTAVENI}.soubor`)) {
-                nastavWatchery();
+            if (e.affectsConfiguration(`${SEKCE_NASTAVENI}.intervalMinut`)) {
+                nastavInterval();
             }
             if (e.affectsConfiguration(SEKCE_NASTAVENI)) {
                 obnov();
             }
         }),
-
-        vscode.workspace.onDidChangeWorkspaceFolders(() => {
-            nastavWatchery();
-            obnov();
-        }),
     );
 
-    nastavWatchery();
+    // Výchozí stav přepínače hotových (kontext pro ikonu v záhlaví)
+    vscode.commands.executeCommand('setContext', 'taskBoard.zobrazitHotove', zobrazitHotove());
+    nastavInterval();
     obnov();
 }
 
@@ -376,26 +509,21 @@ function deactivate() {
     // Vše se uvolní přes context.subscriptions
 }
 
-async function existuje(uri) {
-    try {
-        await vscode.workspace.fs.stat(uri);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
 /**
- * Otevře přehled ve vestavěném náhledu Markdownu (ne v editoru), bez posunu na sekci.
- * (Posun na kotvu nefunguje u nadpisů s diakritikou – chyba náhledu VS Code – a obejití blikalo.)
+ * Text sekce úkolu z původního MD pro import (bez nadpisu).
+ * Řádek „**Stav:** …“ se vynechá, pokud nese jen stav – ten je ve vlastnosti Stav.
  */
-async function otevritNahled(uri) {
-    try {
-        await vscode.commands.executeCommand('markdown.showPreview', uri);
-    } catch {
-        // Záloha, kdyby vestavěné rozšíření Markdown nebylo k dispozici
-        await vscode.window.showTextDocument(uri, { preview: true });
+function textSekce(radky, ukol) {
+    if (ukol.sekceOd === undefined || ukol.sekceDo === undefined) {
+        return [];
     }
+    return radky.slice(ukol.sekceOd + 1, ukol.sekceDo).filter((r, i) => {
+        if (ukol.sekceOd + 1 + i !== ukol.radekStavu) {
+            return true;
+        }
+        const zbytek = odstranMarkdown(r).replace(/^Stav:?\s*/i, '').replace(/[.\s]+$/, '');
+        return zbytek.toLowerCase() !== String(ukol.stavKlic).toLowerCase();
+    });
 }
 
 /** Česká množná čísla pro tooltip odznaku. */

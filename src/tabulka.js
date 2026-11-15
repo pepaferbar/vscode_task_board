@@ -1,8 +1,8 @@
 // Tabulka plánů přímo v postranním panelu (webview view).
 // Úzký panel: Plán / Stav / Datum, aplikace a „Dál“ menším písmem pod plánem.
 // Široký panel (≥ 520 px): všech 5 sloupců vedle sebe.
-// Klik na řádek = otevřít náhled,
-// značka stavu, tlačítko ⋯ nebo pravý klik = nativní kontextové menu (stav, upravit Dál, vložit do Clauda, smazat).
+// Klik na řádek = zobrazit úkol v záložce (náhled Markdownu),
+// značka stavu, tlačítko ⋯ nebo pravý klik = nativní kontextové menu (stav, kopírovat pro Clauda, smazat).
 'use strict';
 const vscode = require('vscode');
 const { ID_STAVU } = require('./parser');
@@ -42,12 +42,13 @@ function nonce() {
 }
 
 class TabulkaPlanu {
-    /** @param {(typ: string, poradi: number) => void} priAkci  typ: otevrit */
-    constructor(priAkci) {
-        this.priAkci = priAkci;
+    /** @param {{priOtevreni: (id: string) => void, priZobrazeni: () => void}} udalosti */
+    constructor(udalosti) {
+        this.udalosti = udalosti;
         this.view = undefined;
         this.ukoly = [];
         this.zprava = undefined;
+        this.poznamka = undefined;
         this.badge = undefined;
     }
 
@@ -56,8 +57,14 @@ class TabulkaPlanu {
         this.view = view;
         view.webview.options = { enableScripts: true };
         view.webview.onDidReceiveMessage((m) => {
-            if (m && m.typ === 'otevrit') {
-                this.priAkci(m.typ, Number(m.poradi));
+            if (m && m.typ === 'otevrit' && m.id) {
+                this.udalosti.priOtevreni(String(m.id));
+            }
+        });
+        // Při každém zobrazení panelu načíst čerstvá data z Notionu
+        view.onDidChangeVisibility(() => {
+            if (view.visible) {
+                this.udalosti.priZobrazeni();
             }
         });
         view.onDidDispose(() => {
@@ -67,10 +74,11 @@ class TabulkaPlanu {
         this._vykresli();
     }
 
-    /** Nová data ze souboru – překreslí tabulku, pokud je panel otevřený. */
-    aktualizuj(ukoly, zprava) {
+    /** Nová data z Notionu – překreslí tabulku, pokud je panel otevřený. */
+    aktualizuj(ukoly, zprava, poznamka) {
         this.ukoly = ukoly;
         this.zprava = zprava;
+        this.poznamka = poznamka; // drobný text pod tabulkou (např. počet skrytých hotových)
         if (this.view) {
             this._vykresli();
         }
@@ -92,8 +100,8 @@ class TabulkaPlanu {
                 const pod = [u.aplikace, u.dal].filter(Boolean).map(esc).join(' · ');
                 const tip = [u.plan, u.aplikace, u.stav, u.datum, u.dal].filter(Boolean).join('\n');
                 // Kontext pro pravý klik (menu webview/context v package.json)
-                const kontext = esc(JSON.stringify({ webviewSection: 'ukol', poradi: u.poradi, stavId: ID_STAVU[u.stavKlic] || 'neznamy', preventDefaultContextMenuItems: true }));
-                return `<tr data-poradi="${u.poradi}" data-vscode-context="${kontext}" tabindex="0" title="${esc(tip)}">
+                const kontext = esc(JSON.stringify({ webviewSection: 'ukol', id: u.id, stavId: ID_STAVU[u.stavKlic] || 'neznamy', preventDefaultContextMenuItems: true }));
+                return `<tr data-id="${esc(u.id)}" data-vscode-context="${kontext}" tabindex="0" title="${esc(tip)}">
   <td class="plan">${esc(u.plan)}${pod ? `<div class="pod uzky">${pod}</div>` : ''}</td>
   <td class="siroky">${esc(u.aplikace)}</td>
   <td class="stav"><span class="znacka" title="Akce (změnit stav…)" style="color: var(${barva})">${znacka}</span><span class="siroky">${esc(u.stav)}</span></td>
@@ -113,6 +121,7 @@ class TabulkaPlanu {
 <style>
   body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); padding: 0 6px 8px; }
   .zprava { color: var(--vscode-descriptionForeground); padding: 8px 4px; }
+  .poznamka { color: var(--vscode-descriptionForeground); font-size: .9em; padding: 6px 4px 0; }
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.25)); vertical-align: top; }
   th { color: var(--vscode-descriptionForeground); font-weight: 600; font-size: .9em; position: sticky; top: 0; background: var(--vscode-sideBar-background); }
@@ -145,9 +154,10 @@ ${this.ukoly.length ? `<table>
 ${radky}
 </tbody>
 </table>` : ''}
+${this.poznamka ? `<p class="poznamka">${esc(this.poznamka)}</p>` : ''}
 <script nonce="${n}">
   const vscode = acquireVsCodeApi();
-  const posli = (typ, tr) => vscode.postMessage({ typ, poradi: tr.dataset.poradi });
+  const posli = (typ, tr) => vscode.postMessage({ typ, id: tr.dataset.id });
   document.querySelectorAll('tbody tr').forEach((tr) => {
     tr.addEventListener('click', (e) => {
       const prvek = e.target.closest('.znacka, .tlacitko');
