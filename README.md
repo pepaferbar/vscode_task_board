@@ -9,9 +9,21 @@ Doplněk pro VS Code. Soubor `tasks/prehled-planu.md` zobrazí jako tabulku př�
 - Panel roztažený na 520 px a víc: všech 5 sloupců vedle sebe (Plán, Aplikace, Stav, Datum, Dál).
 - Najetí myší na řádek ukáže všechny údaje.
 - **Klik** na řádek (nebo Enter) otevře přehled v **náhledu Markdownu** (bez posunu na sekci – náhled VS Code neumí kotvy s diakritikou).
-- Záhlaví panelu: ↻ obnovit, otevřít přehled v náhledu.
+- Záhlaví panelu: ＋ nový úkol, ↻ obnovit, otevřít přehled v náhledu.
 - Tabulka i číslo se obnoví samy po uložení souboru nebo po `git pull`.
 - Číslo na ikoně se objeví, až se panel v dané relaci VS Code poprvé zobrazí (omezení webview panelů).
+
+## Nový úkol
+
+Tlačítko **＋** v záhlaví panelu (nebo „➕ Nový úkol…“ v kontextovém menu či paletě příkazů) se postupně zeptá na:
+
+1. **název** (povinný),
+2. **aplikaci** (nepovinná; samotné slovo se zapíše jako `` `kód` ``),
+3. **stav** (výběr ze seznamu),
+4. **Dál** – další krok (nepovinné),
+5. **popis** do sekce (nepovinný; víc odrážek oddělte `;;`).
+
+Na konec tabulky „Stav v kostce“ přibude řádek s dnešním datem a na konec souboru sekce `## N. Název` s řádkem `**Stav:**` a odrážkami popisu. Esc v kterémkoli kroku přidání zruší.
 
 ## Akce nad úkolem
 

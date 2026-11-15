@@ -1,3 +1,11 @@
+# Změny - 15. 11. 2026
+- **Cíl:** Přidání nového úkolu přímo z panelu
+- **Soubory:**
+  - src/upravy.js: `pridejUkol()` – řádek za poslední řádek tabulky „Stav v kostce“ a sekce `## N. Název` + `**Stav:** …` + odrážky popisu na konec souboru (N = počet řádků tabulky); `dnesniDatum()` ve formátu „15. 11. 2026“
+  - src/extension.js: `akcePridat()` – 5 kroků (název povinný, aplikace, stav z výběru, Dál, popis s odrážkami oddělenými `;;`), Esc = zrušit, zápis přes `zapis()`; příkaz `taskBoard.pridat`
+  - package.json: příkaz `taskBoard.pridat` („➕ Nový úkol…“, ikona `$(add)`) v záhlaví panelu (`navigation@0`), v kontextovém menu webview a v paletě
+  - README.md, CLAUDE.md: popis akce
+
 # Změny - 2026-11-13 (architektura)
 - **Cíl:** Aktualizace popisu architektury skillem `/architektura`.
 - **Soubory:**

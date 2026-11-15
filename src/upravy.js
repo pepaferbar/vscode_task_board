@@ -81,6 +81,79 @@ function smazUkol(radky, ukol) {
     return vysledek;
 }
 
+/**
+ * Přidá nový úkol: řádek na konec tabulky „Stav v kostce“ a sekci „## N. Název“ na konec souboru
+ * (N = pořadí nového řádku v tabulce). Vrací nové pole řádků, bez tabulky undefined.
+ * @param {{plan: string, aplikace?: string, stav: string, datum: string, dal?: string, popis?: string[]}} novy
+ */
+function pridejUkol(radky, novy) {
+    // Najít tabulku pod nadpisem „## … Stav v kostce …“ (mimo bloky kódu)
+    let vKodu = false;
+    let zacatek = -1;
+    for (let i = 0; i < radky.length; i++) {
+        if (/^\s*(```|~~~)/.test(radky[i])) {
+            vKodu = !vKodu;
+            continue;
+        }
+        if (!vKodu && /^##\s+.*stav v kostce/i.test(radky[i])) {
+            zacatek = i;
+            break;
+        }
+    }
+    if (zacatek < 0) {
+        return undefined;
+    }
+    let posledni = -1; // poslední řádek tabulky
+    let pocetRadku = 0; // datové řádky (bez hlavičky a oddělovače)
+    let hlavicka = false;
+    for (let i = zacatek + 1; i < radky.length; i++) {
+        const t = radky[i].trim();
+        if (/^#{1,6}\s/.test(t)) {
+            break;
+        }
+        if (!t.startsWith('|')) {
+            if (posledni >= 0) {
+                break; // tabulka skončila
+            }
+            continue;
+        }
+        posledni = i;
+        if (/^\|?[\s:|-]+\|?$/.test(t) && t.includes('-')) {
+            continue; // oddělovač |---|
+        }
+        if (!hlavicka) {
+            hlavicka = true;
+            continue;
+        }
+        pocetRadku++;
+    }
+    if (posledni < 0) {
+        return undefined;
+    }
+
+    const radekTabulky = '| ' + [novy.plan, novy.aplikace, novy.stav, novy.datum, novy.dal].map(cistaHodnota).join(' | ') + ' |';
+    const vysledek = [...radky.slice(0, posledni + 1), radekTabulky, ...radky.slice(posledni + 1)];
+
+    // Sekce na konec souboru (bez hromadění prázdných řádků)
+    while (vysledek.length > 0 && !vysledek[vysledek.length - 1].trim()) {
+        vysledek.pop();
+    }
+    vysledek.push(
+        '',
+        `## ${pocetRadku + 1}. ${cistaHodnota(novy.plan)}`,
+        `**Stav:** ${novy.stav}.`,
+        ...(novy.popis || []).map((p) => `- ${p}`),
+        '',
+    );
+    return vysledek;
+}
+
+/** Dnešní datum ve formátu souboru: „15. 11. 2026“. */
+function dnesniDatum() {
+    const d = new Date();
+    return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`;
+}
+
 /** Text sekce úkolu pro schránku (jinak aspoň údaje z tabulky). */
 function textUkolu(radky, ukol) {
     if (ukol.sekceOd !== undefined && ukol.sekceDo !== undefined) {
@@ -97,4 +170,4 @@ function textUkolu(radky, ukol) {
         .join('\n');
 }
 
-module.exports = { zmenStav, smazUkol, textUkolu };
+module.exports = { zmenStav, smazUkol, textUkolu, pridejUkol, dnesniDatum };

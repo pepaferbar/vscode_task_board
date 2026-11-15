@@ -1,12 +1,12 @@
 // Doplněk „Plány a úkoly“ – zobrazí tasks/prehled-planu.md jako tabulku v postranním panelu.
-// Soubor čte; zapisuje do něj jen akce spuštěné uživatelem z tabulky (stav, smazání).
+// Soubor čte; zapisuje do něj jen akce spuštěné uživatelem z tabulky (nový úkol, stav, smazání).
 // Čistý JavaScript, bez buildu.
 'use strict';
 const path = require('path');
 const vscode = require('vscode');
 const { ID_STAVU, normalizujStav, parsujPrehled } = require('./parser');
 const { TabulkaPlanu } = require('./tabulka');
-const { smazUkol, textUkolu, zmenStav } = require('./upravy');
+const { dnesniDatum, pridejUkol, smazUkol, textUkolu, zmenStav } = require('./upravy');
 
 const SEKCE_NASTAVENI = 'taskBoard';
 const VYCHOZI_SOUBOR = 'tasks/prehled-planu.md';
@@ -156,6 +156,83 @@ function activate(context) {
         await zapis(dokument, radky);
     }
 
+    /**
+     * Nový úkol: postupně se zeptá na název, aplikaci, stav, „Dál“ a popis.
+     * Přidá řádek na konec tabulky a sekci „## N. …“ na konec souboru. Esc kdykoli = zrušit.
+     */
+    async function akcePridat() {
+        const uri = aktualniSoubor || (await najdiSoubor());
+        if (!uri) {
+            vscode.window.showWarningMessage('Soubor s přehledem plánů nebyl nalezen.');
+            return;
+        }
+        const titul = (krok) => `Nový úkol (${krok}/5)`;
+        const plan = await vscode.window.showInputBox({
+            title: titul(1),
+            prompt: 'Název úkolu (sloupec Plán a nadpis sekce)',
+            ignoreFocusOut: true,
+            validateInput: (v) => (v.trim() ? undefined : 'Název je povinný.'),
+        });
+        if (plan === undefined) {
+            return;
+        }
+        const aplikace = await vscode.window.showInputBox({
+            title: titul(2),
+            prompt: 'Aplikace (nepovinné, Enter = přeskočit)',
+            placeHolder: 'např. finance, rss, nový mcp',
+            ignoreFocusOut: true,
+        });
+        if (aplikace === undefined) {
+            return;
+        }
+        const stav = await vscode.window.showQuickPick(NABIDKA_STAVU, {
+            title: titul(3),
+            placeHolder: 'Stav úkolu',
+            ignoreFocusOut: true,
+        });
+        if (stav === undefined) {
+            return;
+        }
+        const dal = await vscode.window.showInputBox({
+            title: titul(4),
+            prompt: 'Dál – další krok (nepovinné, Enter = přeskočit)',
+            ignoreFocusOut: true,
+        });
+        if (dal === undefined) {
+            return;
+        }
+        const popis = await vscode.window.showInputBox({
+            title: titul(5),
+            prompt: 'Popis do sekce (nepovinné; víc odrážek oddělte „;;“)',
+            ignoreFocusOut: true,
+        });
+        if (popis === undefined) {
+            return;
+        }
+
+        // Samotný název aplikace (jedno slovo) jako kód – jako ostatní řádky tabulky
+        let app = aplikace.trim();
+        if (/^[\w.-]+$/.test(app)) {
+            app = `\`${app}\``;
+        }
+        const dokument = await vscode.workspace.openTextDocument(uri);
+        const radky = pridejUkol(dokument.getText().split(/\r?\n/), {
+            plan: plan.trim(),
+            aplikace: app,
+            stav,
+            datum: dnesniDatum(),
+            dal: dal.trim(),
+            popis: popis.split(';;').map((p) => p.trim()).filter(Boolean),
+        });
+        if (!radky) {
+            vscode.window.showErrorMessage('V souboru chybí tabulka „## Stav v kostce“ – úkol nejde přidat.');
+            return;
+        }
+        if (await zapis(dokument, radky)) {
+            vscode.window.setStatusBarMessage(`$(check) Přidán úkol: ${plan.trim()}`, 3000);
+        }
+    }
+
     /** Příkaz z kontextového menu dostane objekt data-vscode-context, z palety číslo. */
     const prikazNadUkolem = (akce) => (arg) => {
         const poradi = typeof arg === 'number' ? arg : Number(arg && arg.poradi);
@@ -165,6 +242,7 @@ function activate(context) {
         vscode.commands.registerCommand('taskBoard.kopirovat', prikazNadUkolem(akceProClauda)),
         vscode.commands.registerCommand('taskBoard.smazat', prikazNadUkolem(akceSmazat)),
         vscode.commands.registerCommand('taskBoard.smazatHotove', () => akceSmazatHotove()),
+        vscode.commands.registerCommand('taskBoard.pridat', () => akcePridat()),
         // Stavy přímo v kontextovém menu – jeden příkaz na každý stav (taskBoard.stav.napad apod.)
         ...NABIDKA_STAVU.map((stav) =>
             vscode.commands.registerCommand(`taskBoard.stav.${ID_STAVU[stav]}`, prikazNadUkolem((p) => nastavStav(p, stav))),

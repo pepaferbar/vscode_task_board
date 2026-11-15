@@ -3,7 +3,7 @@
 *Aktualizováno: 13. 11. 2026 skillem `/architektura`. Zdroj pravdy je kód – při rozporu platí kód.*
 
 ## Účel
-Doplněk VS Code (ID `ferbar.taskboard`, verze 0.1.0): soubor `tasks/prehled-planu.md` z workspace `_VScode` zobrazí jako tabulku (webview) v postranním panelu, s odznakem počtu otevřených úkolů na ikoně v activity baru. Do souboru zapisuje jen akce spuštěné uživatelem (změna stavu, smazání, „Kopírovat pro Clauda“). Uživatelský popis je v `README.md`.
+Doplněk VS Code (ID `ferbar.taskboard`, verze 0.1.0): soubor `tasks/prehled-planu.md` z workspace `_VScode` zobrazí jako tabulku (webview) v postranním panelu, s odznakem počtu otevřených úkolů na ikoně v activity baru. Do souboru zapisuje jen akce spuštěné uživatelem (nový úkol, změna stavu, smazání, „Kopírovat pro Clauda“). Uživatelský popis je v `README.md`.
 
 ## Vstupní body
 - `package.json` – manifest: aktivace `workspaceContains:tasks/prehled-planu.md`, kontejner `taskBoard` v activity baru, webview view `taskBoard.tabulka`, příkazy, menu, nastavení.
@@ -14,13 +14,13 @@ Doplněk VS Code (ID `ferbar.taskboard`, verze 0.1.0): soubor `tasks/prehled-pla
 |---|---|
 | `src/extension.js` | Hledání souboru (`najdiSoubor` – absolutní cesta, nebo první složka workspace), `obnov()` (čte přes `workspace.fs`, parsuje, překreslí, odznak, kontext `taskBoard.maHotove`), akce nad úkolem, `FileSystemWatcher` s debounce 200 ms, reakce na změnu nastavení/složek |
 | `src/parser.js` | Čistě textový parser (bez API VS Code): tabulka pod nadpisem `## … Stav v kostce …` (sloupce Plán / Aplikace / Stav / Datum / Dál), sekce `## N. Název`, řádek `**Stav:**`, kotvy nadpisů; `normalizujStav`, `ID_STAVU` (ASCII id pro `when`/`enablement`) |
-| `src/upravy.js` | Úpravy nad polem řádků: `zmenStav` (buňka + začátek řádku `**Stav:**`, poznámka za stavem zůstane), `smazUkol` (řádek tabulky + sekce, přečíslování vyšších `## N.`), `textUkolu` (text sekce pro schránku) |
+| `src/upravy.js` | Úpravy nad polem řádků: `zmenStav` (buňka + začátek řádku `**Stav:**`, poznámka za stavem zůstane), `smazUkol` (řádek tabulky + sekce, přečíslování vyšších `## N.`), `textUkolu` (text sekce pro schránku), `pridejUkol` (řádek za konec tabulky + sekce `## N.` na konec souboru, N = počet řádků tabulky), `dnesniDatum` |
 | `src/tabulka.js` | `TabulkaPlanu` – `WebviewViewProvider`: HTML s CSP a nonce, escapování `esc()`, ≥ 520 px všech 5 sloupců, jinak úzké rozložení; řádky nesou `data-vscode-context` (`webviewSection: 'ukol'`, `poradi`, `stavId`) pro nativní kontextové menu |
 | `resources/checklist.svg` | Ikona v activity baru |
 | `.vscode/launch.json` | F5 = Extension Development Host s workspace `${workspaceFolder}/..` |
 
 ## Příkazy a nastavení
-- Příkazy: `taskBoard.obnovit`, `taskBoard.otevritSoubor` (náhled Markdownu), `taskBoard.kopirovat`, `taskBoard.smazat`, `taskBoard.smazatHotove` (`enablement: taskBoard.maHotove`), `taskBoard.stav.{napad,napadLadi,zadani,rozpracovano,odlozeno,hotovo}` (`enablement: stavId != …`). Příkazy nad úkolem jsou v paletě skryté (`when: false`).
+- Příkazy: `taskBoard.pridat` (5 kroků InputBox/QuickPick; tlačítko `$(add)` v záhlaví, kontextové menu, paleta), `taskBoard.obnovit`, `taskBoard.otevritSoubor` (náhled Markdownu), `taskBoard.kopirovat`, `taskBoard.smazat`, `taskBoard.smazatHotove` (`enablement: taskBoard.maHotove`), `taskBoard.stav.{napad,napadLadi,zadani,rozpracovano,odlozeno,hotovo}` (`enablement: stavId != …`). Příkazy nad úkolem jsou v paletě skryté (`when: false`).
 - Nastavení: `taskBoard.soubor` (výchozí `tasks/prehled-planu.md`), `taskBoard.badgeStavy` (stavy počítané do odznaku).
 - Známé stavy: `nápad`, `nápad, ladí se`, `zadání`, `rozpracováno`, `odloženo`, `hotovo`; jiné = `neznámý`.
 
