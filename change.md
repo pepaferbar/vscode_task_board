@@ -1,3 +1,8 @@
+# Změny - 2026-11-15 (architektura)
+- **Cíl:** Aktualizace popisu architektury skillem `/architektura`.
+- **Soubory:**
+  - CLAUDE.md: přepsán podle kódu – název Úkolník, Notion klient (verze API, rozestup, 429, stránka → child_database), skutečná databáze DEV-TASK / Úkoly a záporné Pořadí historických úkolů, záložka přes virtuální dokument, přepínač hotových, rozdělení příkazů podle místa v UI
+
 # Změny - 15. 11. 2026 (přejmenování)
 - **Cíl:** Zobrazovaný název „Plány a úkoly“ → „Úkolník“ (jedno slovo – VS Code v titulku panelu psal „Plány A Úkoly“)
 - **Soubory:**
