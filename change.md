@@ -1,3 +1,11 @@
+# Změny - 18. 11. 2026
+- **Cíl:** Odebrat pole „Dál“, nový úkol dokončit v Notionu, rozdělit podle aplikace, řadit podle priority a data vytvoření (databáze DEV-TASK už má jen Název, Aplikace, Stav, Priority)
+- **Soubory:**
+  - src/notion.js: `VLASTNOSTI` bez `dal` a `poradi`, nová `priorita` (`Priority`); `nactiUkoly()` řadí podle `created_time` a pak stabilně podle priority (`poradiPriority()`: High/Medium/Low, i česky, prázdná na konec); úkol nese `priorita`, `poradiPriority`, `vytvoreno`, `datum` = datum vytvoření; `vytvorUkol()` bez popisu zkusí výchozí šablonu databáze (`template: default`), při 400 bez ní
+  - src/extension.js: `akcePridat()` jen název → stránka ve stavu „nápad“ → `openExternal` na novou stránku; odstraněno „Dál“ ze záložky úkolu i z „Kopírovat pro Clauda“ (místo Data priorita a Vytvořeno); import z MD bez `dal`/`poradi`
+  - src/tabulka.js: skupiny podle aplikace (`seskupPodleAplikace`, abecedně, „Bez aplikace“ na konci, počet úkolů); sloupce Plán / Priorita / Stav / Vytvořeno, bez Aplikace a Dál; v úzkém panelu priorita pod názvem
+  - README.md, CLAUDE.md: popis
+
 # Změny - 2026-11-15 (architektura)
 - **Cíl:** Aktualizace popisu architektury skillem `/architektura`.
 - **Soubory:**

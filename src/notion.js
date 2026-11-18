@@ -9,8 +9,17 @@ const MEZERA_MS = 350; // Notion povoluje v průměru 3 požadavky za sekundu
 const MAX_TEXT = 2000; // limit znaků jednoho rich_text prvku
 const MAX_BLOKU = 100; // limit bloků v jednom požadavku
 
-/** Názvy vlastností v databázi (titulek se hledá podle typu, ne podle názvu). */
-const VLASTNOSTI = { aplikace: 'Aplikace', stav: 'Stav', datum: 'Datum', dal: 'Dál', poradi: 'Pořadí' };
+/** Názvy vlastností v databázi (titulek se hledá podle typu, ne podle názvu). Datum jen pro import z MD. */
+const VLASTNOSTI = { aplikace: 'Aplikace', stav: 'Stav', priorita: 'Priority', datum: 'Datum' };
+
+/** Pořadí priorit při řazení (menší = výš); neznámá nebo prázdná priorita jde na konec. */
+const PORADI_PRIORIT = { high: 0, vysoká: 0, medium: 1, střední: 1, low: 2, nízká: 2 };
+
+/** Číslo pro řazení podle priority. */
+function poradiPriority(priorita) {
+    const p = PORADI_PRIORIT[String(priorita || '').trim().toLowerCase()];
+    return p === undefined ? 3 : p;
+}
 
 /** Notion nepovolí čárku v názvu volby select/status – stavy s čárkou mají v Notionu jiný zápis. */
 const STAV_DO_NOTIONU = { 'nápad, ladí se': 'nápad (ladí se)' };
@@ -324,20 +333,17 @@ class NotionKlient {
         return this.zdroj;
     }
 
-    /** Všechny úkoly (stránky databáze) v pořadí podle vlastnosti Pořadí, záložně podle vytvoření. */
+    /**
+     * Všechny úkoly (stránky databáze) seřazené podle priority (High → Medium → Low → bez priority)
+     * a v rámci stejné priority podle data vytvoření (nejstarší první).
+     */
     async nactiUkoly() {
         const zdroj = await this.zdrojDat();
-        const razeni = [];
-        if (zdroj.schema[VLASTNOSTI.poradi] === 'number') {
-            razeni.push({ property: VLASTNOSTI.poradi, direction: 'ascending' });
-        }
-        razeni.push({ timestamp: 'created_time', direction: 'ascending' });
-
         const stranky = [];
         let kurzor;
         do {
             const data = await this.volej('POST', `/data_sources/${zdroj.id}/query`, {
-                sorts: razeni,
+                sorts: [{ timestamp: 'created_time', direction: 'ascending' }],
                 page_size: 100,
                 ...(kurzor ? { start_cursor: kurzor } : {}),
             });
@@ -345,25 +351,25 @@ class NotionKlient {
             kurzor = data.has_more ? data.next_cursor : undefined;
         } while (kurzor);
 
-        return stranky.map((p, i) => {
+        const ukoly = stranky.map((p) => {
             const v = p.properties || {};
             const stav = stavZNotionu(cteniVlastnosti(v[VLASTNOSTI.stav]));
-            const datum = cteniVlastnosti(v[VLASTNOSTI.datum]);
-            const poradi = Number(cteniVlastnosti(v[VLASTNOSTI.poradi]));
+            const priorita = cteniVlastnosti(v[VLASTNOSTI.priorita]);
             return {
                 id: p.id,
                 url: p.url,
-                poradi: i + 1,
-                cislo: Number.isFinite(poradi) && poradi > 0 ? poradi : undefined,
                 plan: cteniVlastnosti(zdroj.titulek ? v[zdroj.titulek] : undefined) || '(bez názvu)',
-                aplikace: cteniVlastnosti(v[VLASTNOSTI.aplikace]),
+                aplikace: cteniVlastnosti(v[VLASTNOSTI.aplikace]).trim(),
                 stav,
                 stavKlic: normalizujStav(stav),
-                // Typ date se ukáže česky, textový sloupec Datum zůstane jak je
-                datum: datumCesky(datum) || datum,
-                dal: cteniVlastnosti(v[VLASTNOSTI.dal]),
+                priorita,
+                poradiPriority: poradiPriority(priorita),
+                vytvoreno: p.created_time || '',
+                datum: datumCesky(p.created_time), // datum vytvoření česky
             };
         });
+        // Stabilní řazení: priorita, pak vytvoření (dotaz už vrací podle vytvoření)
+        return ukoly.sort((a, b) => a.poradiPriority - b.poradiPriority || a.vytvoreno.localeCompare(b.vytvoreno));
     }
 
     /** Vlastnosti pro zápis – jen ty, které ve schématu existují a jejichž typ umíme. */
@@ -395,17 +401,31 @@ class NotionKlient {
     }
 
     /**
-     * Nový úkol. ukol = { plan, aplikace, stav, datum (ISO), dal, cislo }, radky = text popisu (Markdown).
-     * Vrací vytvořenou stránku.
+     * Nový úkol. ukol = { plan, aplikace, stav, priorita, datum (ISO) }, radky = text popisu (Markdown).
+     * Bez popisu se použije výchozí šablona stránky databáze (pokud ji databáze má).
+     * Vrací vytvořenou stránku (včetně url).
      */
     async vytvorUkol(ukol, radky = []) {
         const zdroj = await this.zdrojDat();
         const bloky = blokyZMarkdownu(radky);
-        const stranka = await this.volej('POST', '/pages', {
+        const telo = {
             parent: { type: 'data_source_id', data_source_id: zdroj.id },
             properties: await this.vlastnosti(ukol),
-            children: bloky.slice(0, MAX_BLOKU),
-        });
+        };
+        let stranka;
+        if (bloky.length === 0) {
+            // Šablona a children nejdou spolu; když šablonu Notion odmítne, založí se prázdná stránka
+            try {
+                stranka = await this.volej('POST', '/pages', { ...telo, template: { type: 'default' } });
+            } catch (e) {
+                if (!(e instanceof ChybaNotionu) || e.status !== 400) {
+                    throw e;
+                }
+                stranka = await this.volej('POST', '/pages', telo);
+            }
+            return stranka;
+        }
+        stranka = await this.volej('POST', '/pages', { ...telo, children: bloky.slice(0, MAX_BLOKU) });
         // Delší popis se dopíše po stovkách bloků
         for (let i = MAX_BLOKU; i < bloky.length; i += MAX_BLOKU) {
             await this.volej('PATCH', `/blocks/${stranka.id}/children`, { children: bloky.slice(i, i + MAX_BLOKU) });

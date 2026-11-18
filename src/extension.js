@@ -5,7 +5,7 @@
 const vscode = require('vscode');
 const { ID_STAVU, normalizujStav, parsujPrehled } = require('./parser');
 const { TabulkaPlanu } = require('./tabulka');
-const { NotionKlient, idZOdkazu, datumIso, dnesIso, odstranMarkdown } = require('./notion');
+const { NotionKlient, idZOdkazu, datumIso, odstranMarkdown } = require('./notion');
 
 const SEKCE_NASTAVENI = 'taskBoard';
 const KLIC_TOKENU = 'taskBoard.notionToken';
@@ -14,6 +14,7 @@ const SCHEMA_ZALOZKY = 'taskboard-ukol'; // virtuální dokumenty pro náhled ú
 
 /** Stavy v kontextovém menu (pořadí životního cyklu); znak před názvem je v package.json. */
 const NABIDKA_STAVU = ['nápad', 'nápad, ladí se', 'zadání', 'rozpracováno', 'odloženo', 'hotovo'];
+const VYCHOZI_STAV = 'nápad'; // stav nově založeného úkolu
 
 /** @param {vscode.ExtensionContext} context */
 function activate(context) {
@@ -104,8 +105,8 @@ function activate(context) {
             const udaje = [
                 ukol.aplikace && `**Aplikace:** ${ukol.aplikace}`,
                 `**Stav:** ${ukol.stav || 'neuveden'}`,
-                ukol.datum && `**Datum:** ${ukol.datum}`,
-                ukol.dal && `**Dál:** ${ukol.dal}`,
+                ukol.priorita && `**Priorita:** ${ukol.priorita}`,
+                ukol.datum && `**Vytvořeno:** ${ukol.datum}`,
             ].filter(Boolean);
             const text = [
                 `# ${ukol.plan}`,
@@ -177,8 +178,8 @@ function activate(context) {
                 `## ${ukol.plan}`,
                 ukol.aplikace && `- Aplikace: ${ukol.aplikace}`,
                 `- Stav: ${ukol.stav || 'neuveden'}`,
-                ukol.datum && `- Datum: ${ukol.datum}`,
-                ukol.dal && `- Dál: ${ukol.dal}`,
+                ukol.priorita && `- Priorita: ${ukol.priorita}`,
+                ukol.datum && `- Vytvořeno: ${ukol.datum}`,
                 obsah && `\n${obsah}`,
             ]
                 .filter(Boolean)
@@ -217,64 +218,32 @@ function activate(context) {
     }
 
     /**
-     * Nový úkol: postupně se zeptá na název, aplikaci, stav, „Dál“ a popis.
-     * Založí stránku v databázi (Pořadí = nejvyšší + 1, Datum = dnes). Esc kdykoli = zrušit.
+     * Nový úkol: zeptá se jen na název, založí stránku (stav „nápad“) a otevře ji v Notionu,
+     * kde se doplní zbytek (aplikace, priorita, popis). Esc = zrušit.
      */
     async function akcePridat() {
         const k = await klientProAkci();
         if (!k) {
             return;
         }
-        const titul = (krok) => `Nový úkol (${krok}/5)`;
         const plan = await vscode.window.showInputBox({
-            title: titul(1),
-            prompt: 'Název úkolu',
+            title: 'Nový úkol',
+            prompt: 'Název úkolu – ostatní údaje se doplní v Notionu',
             ignoreFocusOut: true,
             validateInput: (v) => (v.trim() ? undefined : 'Název je povinný.'),
         });
         if (plan === undefined) {
             return;
         }
-        const aplikace = await vscode.window.showInputBox({
-            title: titul(2),
-            prompt: 'Aplikace (nepovinné, Enter = přeskočit)',
-            placeHolder: 'např. finance, rss, nový mcp',
-            ignoreFocusOut: true,
-        });
-        if (aplikace === undefined) {
-            return;
-        }
-        const stav = await vscode.window.showQuickPick(NABIDKA_STAVU, {
-            title: titul(3),
-            placeHolder: 'Stav úkolu',
-            ignoreFocusOut: true,
-        });
-        if (stav === undefined) {
-            return;
-        }
-        const dal = await vscode.window.showInputBox({
-            title: titul(4),
-            prompt: 'Dál – další krok (nepovinné, Enter = přeskočit)',
-            ignoreFocusOut: true,
-        });
-        if (dal === undefined) {
-            return;
-        }
-        const popis = await vscode.window.showInputBox({
-            title: titul(5),
-            prompt: 'Popis do stránky (nepovinné; víc odrážek oddělte „;;“)',
-            ignoreFocusOut: true,
-        });
-        if (popis === undefined) {
-            return;
-        }
-        const cislo = Math.max(0, ...posledniUkoly.map((u) => u.cislo || 0)) + 1;
         try {
-            await k.vytvorUkol(
-                { plan: plan.trim(), aplikace: aplikace.trim(), stav, datum: dnesIso(), dal: dal.trim(), poradi: cislo },
-                popis.split(';;').map((p) => p.trim()).filter(Boolean).map((p) => `- ${p}`),
+            const stranka = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Window, title: `Zakládám úkol ${plan.trim()}…` },
+                () => k.vytvorUkol({ plan: plan.trim(), stav: VYCHOZI_STAV }),
             );
             vscode.window.setStatusBarMessage(`$(check) Přidán úkol: ${plan.trim()}`, 3000);
+            if (stranka && stranka.url) {
+                await vscode.env.openExternal(vscode.Uri.parse(stranka.url));
+            }
             await obnov();
         } catch (e) {
             chyba(e);
@@ -340,7 +309,6 @@ function activate(context) {
         if (odpoved !== 'Importovat') {
             return;
         }
-        const zacatek = Math.max(0, ...posledniUkoly.map((u) => u.cislo || 0));
         let hotovo = 0;
         try {
             await vscode.window.withProgress(
@@ -357,8 +325,6 @@ function activate(context) {
                                 aplikace: u.aplikace,
                                 stav: u.stavKlic === 'neznámý' ? u.stav : u.stavKlic,
                                 datum: datumIso(u.datum) || u.datum,
-                                dal: u.dal,
-                                poradi: zacatek + hotovo + 1,
                             },
                             textSekce(radky, u),
                         );

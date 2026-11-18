@@ -12,9 +12,7 @@ Doplněk pro VS Code. Databázi úkolů v **Notionu** zobrazí jako tabulku př�
    | *(titulek)* | Title | název úkolu, jméno sloupce může být libovolné |
    | `Aplikace` | Text (doporučeno), Select nebo Multi-select | |
    | `Stav` | Select (nebo Status) | volby: `nápad`, `nápad (ladí se)`, `zadání`, `rozpracováno`, `odloženo`, `hotovo` |
-   | `Datum` | Date (nebo Text) | |
-   | `Dál` | Text | další krok |
-   | `Pořadí` | Number | řazení v tabulce; bez ní se řadí podle data vytvoření |
+   | `Priority` | Select | volby `High`, `Medium`, `Low` (jde i česky `vysoká`, `střední`, `nízká`); řazení v tabulce |
 
    Stav „nápad, ladí se“ má v Notionu volbu **„nápad (ladí se)“**, protože Notion nepovolí čárku v názvu volby. Doplněk ji převádí sám. Chybějící volby select si Notion při zápisu založí sám.
 3. **Sdílení:** v databázi ⋯ → *Connections* → přidat svou integraci.
@@ -25,9 +23,10 @@ Doplněk pro VS Code. Databázi úkolů v **Notionu** zobrazí jako tabulku př�
 
 ## Zobrazení
 
-- Tabulka = stránky databáze seřazené podle `Pořadí`.
-- Úzký panel: sloupce Plán, Stav (značka), Datum (krátké); aplikace a „Dál“ menším písmem pod názvem plánu.
-- Panel roztažený na 520 px a víc: všech 5 sloupců vedle sebe (Plán, Aplikace, Stav, Datum, Dál).
+- Tabulka = stránky databáze **rozdělené do skupin podle `Aplikace`** (abecedně, „Bez aplikace“ na konci, u skupiny počet úkolů).
+- Ve skupině se řadí podle **priority** (High → Medium → Low → bez priority) a při stejné prioritě podle **data vytvoření** (nejstarší první).
+- Úzký panel: sloupce Plán, Stav (značka), Vytvořeno (krátké datum); priorita menším písmem pod názvem plánu.
+- Panel roztažený na 520 px a víc: Plán, Priorita, Stav, Vytvořeno vedle sebe.
 - Najetí myší na řádek ukáže všechny údaje.
 - **Klik** na řádek (nebo Enter) zobrazí úkol v záložce VS Code (náhled Markdownu: údaje, obsah stránky načtený z Notionu a odkaz „Otevřít v Notionu“). Notion samotný do záložky vložit nejde – nepovoluje zobrazení v rámu.
 - Záhlaví panelu: ＋ nový úkol, ↻ obnovit, otevřít databázi v Notionu, přepínač hotových (oko).
@@ -38,21 +37,13 @@ Doplněk pro VS Code. Databázi úkolů v **Notionu** zobrazí jako tabulku př�
 
 ## Nový úkol
 
-Tlačítko **＋** v záhlaví panelu (nebo „➕ Nový úkol…“ v kontextovém menu či paletě příkazů) se postupně zeptá na:
-
-1. **název** (povinný),
-2. **aplikaci** (nepovinná),
-3. **stav** (výběr ze seznamu),
-4. **Dál** – další krok (nepovinné),
-5. **popis** (nepovinný; víc odrážek oddělte `;;`).
-
-V databázi přibude stránka s dnešním datem, `Pořadí` = nejvyšší + 1 a popisem jako odrážkami. Esc v kterémkoli kroku přidání zruší.
+Tlačítko **＋** v záhlaví panelu (nebo „➕ Nový úkol…“ v kontextovém menu či paletě příkazů) se zeptá jen na **název**. V databázi přibude stránka ve stavu „nápad“ (s výchozí šablonou databáze, pokud ji má) a hned se otevře v Notionu, kde se doplní zbytek – aplikace, priorita, popis. Esc přidání zruší.
 
 ## Akce nad úkolem
 
 Klik na **značku stavu**, tlačítko **⋯** nebo **pravý klik** na řádek = kontextové menu (položky se znaky/emoji, aktuální stav zašedlý):
 
-- **stavy** (nápad … hotovo) – změní vlastnost `Stav`. Datum se nemění.
+- **stavy** (nápad … hotovo) – změní vlastnost `Stav`.
 - **Kopírovat pro Clauda** – název, údaje a celý obsah stránky jako Markdown do schránky (vložit ručně do otevřené konverzace; doplněk Claude Code neumí vložit text do už otevřené konverzace). Úkol se rovnou přepne do stavu „rozpracováno“.
 - **Smazat úkol…** – po potvrzení přesune stránku do koše Notionu (odtud jde obnovit).
 

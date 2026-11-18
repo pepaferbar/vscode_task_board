@@ -1,6 +1,8 @@
 // Tabulka plánů přímo v postranním panelu (webview view).
-// Úzký panel: Plán / Stav / Datum, aplikace a „Dál“ menším písmem pod plánem.
-// Široký panel (≥ 520 px): všech 5 sloupců vedle sebe.
+// Úkoly rozdělené do skupin podle aplikace (abecedně, „Bez aplikace“ na konci);
+// pořadí uvnitř skupiny přichází z Notion klienta (priorita, pak datum vytvoření).
+// Úzký panel: Plán / Stav / Vytvořeno, priorita menším písmem pod plánem.
+// Široký panel (≥ 520 px): Plán / Priorita / Stav / Vytvořeno vedle sebe.
 // Klik na řádek = zobrazit úkol v záložce (náhled Markdownu),
 // značka stavu, tlačítko ⋯ nebo pravý klik = nativní kontextové menu (stav, kopírovat pro Clauda, smazat).
 'use strict';
@@ -17,6 +19,25 @@ const ZNACKY_STAVU = {
     'hotovo': ['✔', '--vscode-charts-green'],
     'neznámý': ['?', '--vscode-descriptionForeground'],
 };
+
+/** Barva priority (CSS proměnná motivu VS Code), barvy jako v Notionu. */
+const BARVY_PRIORIT = ['--vscode-charts-red', '--vscode-charts-green', '--vscode-descriptionForeground'];
+const BEZ_APLIKACE = 'Bez aplikace';
+
+/** Úkoly → skupiny [{ nazev, ukoly }] podle aplikace; pořadí úkolů ve skupině se zachová. */
+function seskupPodleAplikace(ukoly) {
+    const skupiny = new Map();
+    for (const u of ukoly) {
+        const nazev = u.aplikace || BEZ_APLIKACE;
+        if (!skupiny.has(nazev)) {
+            skupiny.set(nazev, []);
+        }
+        skupiny.get(nazev).push(u);
+    }
+    return [...skupiny.entries()]
+        .map(([nazev, seznam]) => ({ nazev, ukoly: seznam }))
+        .sort((a, b) => (a.nazev === BEZ_APLIKACE) - (b.nazev === BEZ_APLIKACE) || a.nazev.localeCompare(b.nazev, 'cs'));
+}
 
 function esc(s) {
     return String(s || '')
@@ -94,22 +115,29 @@ class TabulkaPlanu {
 
     _vykresli() {
         const n = nonce();
-        const radky = this.ukoly
-            .map((u) => {
-                const [znacka, barva] = ZNACKY_STAVU[u.stavKlic] || ZNACKY_STAVU['neznámý'];
-                const pod = [u.aplikace, u.dal].filter(Boolean).map(esc).join(' · ');
-                const tip = [u.plan, u.aplikace, u.stav, u.datum, u.dal].filter(Boolean).join('\n');
-                // Kontext pro pravý klik (menu webview/context v package.json)
-                const kontext = esc(JSON.stringify({ webviewSection: 'ukol', id: u.id, stavId: ID_STAVU[u.stavKlic] || 'neznamy', preventDefaultContextMenuItems: true }));
-                return `<tr data-id="${esc(u.id)}" data-vscode-context="${kontext}" tabindex="0" title="${esc(tip)}">
-  <td class="plan">${esc(u.plan)}${pod ? `<div class="pod uzky">${pod}</div>` : ''}</td>
-  <td class="siroky">${esc(u.aplikace)}</td>
+        const radek = (u) => {
+            const [znacka, barva] = ZNACKY_STAVU[u.stavKlic] || ZNACKY_STAVU['neznámý'];
+            const priorita = u.priorita
+                ? `<span class="priorita" style="color: var(${BARVY_PRIORIT[u.poradiPriority] || BARVY_PRIORIT[2]})">${esc(u.priorita)}</span>`
+                : '';
+            const tip = [u.plan, u.aplikace, u.stav, u.priorita && `Priorita: ${u.priorita}`, u.datum && `Vytvořeno: ${u.datum}`]
+                .filter(Boolean)
+                .join('\n');
+            // Kontext pro pravý klik (menu webview/context v package.json)
+            const kontext = esc(JSON.stringify({ webviewSection: 'ukol', id: u.id, stavId: ID_STAVU[u.stavKlic] || 'neznamy', preventDefaultContextMenuItems: true }));
+            return `<tr class="ukol" data-id="${esc(u.id)}" data-vscode-context="${kontext}" tabindex="0" title="${esc(tip)}">
+  <td class="plan">${esc(u.plan)}${priorita ? `<div class="pod uzky">${priorita}</div>` : ''}</td>
+  <td class="siroky">${priorita}</td>
   <td class="stav"><span class="znacka" title="Akce (změnit stav…)" style="color: var(${barva})">${znacka}</span><span class="siroky">${esc(u.stav)}</span></td>
   <td class="datum"><span class="uzky">${esc(kratkeDatum(u.datum))}</span><span class="siroky">${esc(u.datum)}</span></td>
-  <td class="siroky">${esc(u.dal)}</td>
   <td class="akce"><button class="tlacitko" title="Akce">⋯</button></td>
 </tr>`;
-            })
+        };
+        const radky = seskupPodleAplikace(this.ukoly)
+            .map(
+                (sk) => `<tr class="skupina"><td colspan="5">${esc(sk.nazev)} <span class="pocet">${sk.ukoly.length}</span></td></tr>
+${sk.ukoly.map(radek).join('\n')}`,
+            )
             .join('\n');
 
         this.view.webview.html = `<!DOCTYPE html>
@@ -125,8 +153,12 @@ class TabulkaPlanu {
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.25)); vertical-align: top; }
   th { color: var(--vscode-descriptionForeground); font-weight: 600; font-size: .9em; position: sticky; top: 0; background: var(--vscode-sideBar-background); }
-  tbody tr { cursor: pointer; }
-  tbody tr:hover { background: var(--vscode-list-hoverBackground); }
+  tbody tr.ukol { cursor: pointer; }
+  tbody tr.ukol:hover { background: var(--vscode-list-hoverBackground); }
+  tr.skupina td { font-weight: 600; font-size: .85em; text-transform: uppercase; letter-spacing: .04em; color: var(--vscode-descriptionForeground); padding-top: 12px; border-bottom: 1px solid var(--vscode-focusBorder, rgba(128,128,128,.5)); }
+  tbody tr.skupina:first-child td { padding-top: 6px; }
+  .pocet { font-weight: normal; opacity: .8; margin-left: 4px; }
+  .priorita { font-size: .9em; }
   tbody tr:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
   .plan { font-weight: 600; }
   .pod { font-weight: normal; font-size: .9em; color: var(--vscode-descriptionForeground); margin-top: 2px; }
@@ -149,7 +181,7 @@ class TabulkaPlanu {
 <body>
 ${this.zprava ? `<p class="zprava">${esc(this.zprava)}</p>` : ''}
 ${this.ukoly.length ? `<table>
-<thead><tr><th>Plán</th><th class="siroky">Aplikace</th><th>Stav</th><th>Datum</th><th class="siroky">Dál</th><th class="akce"></th></tr></thead>
+<thead><tr><th>Plán</th><th class="siroky">Priorita</th><th>Stav</th><th>Vytvořeno</th><th class="akce"></th></tr></thead>
 <tbody>
 ${radky}
 </tbody>
@@ -158,7 +190,7 @@ ${this.poznamka ? `<p class="poznamka">${esc(this.poznamka)}</p>` : ''}
 <script nonce="${n}">
   const vscode = acquireVsCodeApi();
   const posli = (typ, tr) => vscode.postMessage({ typ, id: tr.dataset.id });
-  document.querySelectorAll('tbody tr').forEach((tr) => {
+  document.querySelectorAll('tbody tr.ukol').forEach((tr) => {
     tr.addEventListener('click', (e) => {
       const prvek = e.target.closest('.znacka, .tlacitko');
       if (prvek) {
